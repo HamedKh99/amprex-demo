@@ -10,3 +10,4 @@ coverage/
 apps/api/src/generated/
 next-env.d.ts
 .DS_Store
+.vercel
