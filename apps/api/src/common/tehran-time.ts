@@ -35,12 +35,14 @@ export function tehranDayStart(date: string): Date {
   return new Date(dateOnly(date).getTime() - TEHRAN_OFFSET_MS);
 }
 
-/** Bookable dates (Tehran), from today + min to today + max days, inclusive. */
+/** Bookable dates (Tehran): today and the following days, «bookingDays» in total. */
 export function bookingWindow(now: Date | number = Date.now()): string[] {
   const today = tehranDate(now);
-  const days: string[] = [];
-  for (let d = BUSINESS_RULES.bookingMinDaysAhead; d <= BUSINESS_RULES.bookingMaxDaysAhead; d++) {
-    days.push(addDays(today, d));
-  }
-  return days;
+  return Array.from({ length: BUSINESS_RULES.bookingDays }, (_, d) => addDays(today, d));
+}
+
+/** Instant of "HH:mm" Tehran time on a Tehran calendar day. */
+export function tehranTime(date: string, hhmm: string): Date {
+  const [h, m] = hhmm.split(':').map(Number);
+  return new Date(tehranDayStart(date).getTime() + (h! * 60 + m!) * 60_000);
 }

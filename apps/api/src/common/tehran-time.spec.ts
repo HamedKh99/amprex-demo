@@ -1,4 +1,4 @@
-import { addDays, bookingWindow, tehranDate, tehranDayStart } from './tehran-time.js';
+import { addDays, bookingWindow, tehranDate, tehranDayStart, tehranTime } from './tehran-time.js';
 
 describe('tehran-time', () => {
   it('uses the Tehran calendar day, not UTC', () => {
@@ -16,10 +16,14 @@ describe('tehran-time', () => {
     expect(tehranDayStart('2026-10-18').toISOString()).toBe('2026-10-17T20:30:00.000Z');
   });
 
-  it('offers tomorrow through 7 days ahead', () => {
+  it('offers today and the next six days', () => {
     const w = bookingWindow(Date.parse('2026-10-17T08:00:00Z'));
-    expect(w[0]).toBe('2026-10-18');
-    expect(w.at(-1)).toBe('2026-10-24');
+    expect(w[0]).toBe('2026-10-17');
+    expect(w.at(-1)).toBe('2026-10-23');
     expect(w).toHaveLength(7);
+  });
+
+  it('resolves a slot start in Tehran time', () => {
+    expect(tehranTime('2026-10-18', '14:00').toISOString()).toBe('2026-10-18T10:30:00.000Z');
   });
 });
