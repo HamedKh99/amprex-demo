@@ -11,11 +11,14 @@ const jalali = new Intl.DateTimeFormat('en-US-u-ca-persian-nu-latn', {
 // No 0/O or 1/I so codes survive being read out over the phone.
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
-/** Customer-facing tracking code: AMX-<Jalali YYMMDD>-<4 chars>, e.g. AMX-050725-K7Q2. */
-export function orderCode(at: Date, pick: (max: number) => number = randomInt): string {
+/** <PREFIX>-<Jalali YYMMDD>-<4 chars>; used for orders (AMX), receipts (RCV) and transfers (TRF). */
+export function documentCode(prefix: string, at: Date, pick: (max: number) => number = randomInt): string {
   const parts = Object.fromEntries(jalali.formatToParts(at).map((p) => [p.type, p.value]));
   const suffix = Array.from({ length: 4 }, () => ALPHABET[pick(ALPHABET.length)]).join('');
-  return `AMX-${parts.year!.slice(-2)}${parts.month}${parts.day}-${suffix}`;
+  return `${prefix}-${parts.year!.slice(-2)}${parts.month}${parts.day}-${suffix}`;
 }
+
+/** Customer-facing tracking code, e.g. AMX-050725-K7Q2. */
+export const orderCode = (at: Date, pick?: (max: number) => number) => documentCode('AMX', at, pick);
 
 export const ORDER_CODE_PATTERN = /^AMX-(\d{6}-[A-Z2-9]{4}|LEGACY-\d+)$/;

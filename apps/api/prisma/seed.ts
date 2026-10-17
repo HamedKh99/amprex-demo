@@ -19,7 +19,7 @@ import {
   type VehicleModel,
 } from '../src/generated/prisma/client.js';
 import { BUSINESS_RULES } from '../src/config/business-rules.js';
-import { orderCode } from '../src/orders/order-code.js';
+import { documentCode, orderCode } from '../src/orders/order-code.js';
 import { breakdown, coreScrapValue, quote } from '../src/pricing/pricing.js';
 import {
   BATTERIES,
@@ -230,8 +230,8 @@ async function main() {
   const issued = new Map<string, number>();
   const bump = (m: Map<string, number>, k: string) => m.set(k, (m.get(k) ?? 0) + 1);
   const movements: {
-    branchId: string; batteryId: string; type: 'RECEIPT' | 'RESERVE' | 'RELEASE' | 'ISSUE';
-    quantity: number; orderId?: string; actorUserId?: string | null; createdAt: Date; note?: string;
+    branchId: string; batteryId: string; type: 'RECEIPT' | 'RESERVE' | 'RELEASE' | 'ISSUE' | 'TRANSFER';
+    quantity: number; orderId?: string; actorUserId?: string | null; createdAt: Date; note?: string; reference?: string;
   }[] = [];
   let discrepancyPlanted = false;
   let demoTechFinishedToday = 0;
@@ -436,19 +436,43 @@ async function main() {
   }
 
   // ── stock: free stock from seed-data + live reservations; opening receipt covers issued units ──
+  // Today's warehouse work, so the ledger shows every row type: a receipt and a transfer east → west.
+  const sku = (code: string) => batteries.find((b) => b.sku === code)!.id;
+  const westId = branches.get('WEST')!;
+  const eastId = branches.get('EAST')!;
+  const manager = users.get('BRANCH_MANAGER')!;
+  const todayWork: typeof movements = [
+    { branchId: westId, batteryId: sku('SAB-60'), type: 'RECEIPT', quantity: 10, actorUserId: manager, createdAt: new Date(NOW - 3 * HOUR), reference: documentCode('RCV', new Date(NOW), (m) => Math.floor(rand() * m)) },
+    ...((): typeof movements => {
+      const reference = documentCode('TRF', new Date(NOW), (m) => Math.floor(rand() * m));
+      const at = new Date(NOW - 2 * HOUR);
+      return [
+        { branchId: eastId, batteryId: sku('NIR-66'), type: 'TRANSFER', quantity: -2, actorUserId: users.get('SUPER_ADMIN')!, createdAt: at, reference, note: 'به شعبه غرب' },
+        { branchId: westId, batteryId: sku('NIR-66'), type: 'TRANSFER', quantity: 2, actorUserId: users.get('SUPER_ADMIN')!, createdAt: at, reference, note: 'از شعبه شرق' },
+      ];
+    })(),
+  ];
+  /** Reorder point per SKU (fast movers higher). */
+  const REORDER: Record<string, number> = { 'SAB-60': 10, 'SAB-50': 8, 'ATL-60': 5, 'SAB-74': 5 };
   for (const b of BRANCHES) {
     const branchId = branches.get(b.code)!;
     for (const battery of batteries) {
       const key = `${branchId}:${battery.id}`;
       const res = reserved.get(key) ?? 0;
       const onHand = FREE_STOCK[b.code][battery.sku]! + res;
-      await prisma.stock.create({ data: { branchId, batteryId: battery.id, onHand, reserved: res } });
+      await prisma.stock.create({
+        data: { branchId, batteryId: battery.id, onHand, reserved: res, reorderPoint: REORDER[battery.sku] ?? 4 },
+      });
+      // Opening balance = today's on hand + everything issued − today's receipts/transfers in.
+      const later = todayWork.filter((m) => m.branchId === branchId && m.batteryId === battery.id).reduce((t, m) => t + m.quantity, 0);
       movements.push({
-        branchId, batteryId: battery.id, type: 'RECEIPT', quantity: onHand + (issued.get(key) ?? 0),
+        branchId, batteryId: battery.id, type: 'RECEIPT', quantity: onHand + (issued.get(key) ?? 0) - later,
         actorUserId: users.get('SUPER_ADMIN')!, createdAt: new Date(NOW - 35 * DAY), note: 'موجودی اولیه',
+        reference: documentCode('RCV', new Date(NOW - 35 * DAY), (m) => Math.floor(rand() * m)),
       });
     }
   }
+  movements.push(...todayWork);
   await prisma.stockMovement.createMany({ data: movements });
 
   const counts = await prisma.order.groupBy({ by: ['status'], _count: true });
