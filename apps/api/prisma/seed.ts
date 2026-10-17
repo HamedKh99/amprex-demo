@@ -39,7 +39,8 @@ import {
 
 config({ path: ['.env', '../../.env'], quiet: true });
 
-const DATABASE_URL = process.env.DATABASE_URL;
+// Same database as prisma.config.ts: the direct (non-pooled) URL when there is one.
+const DATABASE_URL = process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL;
 if (!DATABASE_URL) throw new Error('DATABASE_URL is not set (copy .env.example to .env)');
 const DEMO_PASSWORD = process.env.SEED_DEMO_PASSWORD;
 if (!DEMO_PASSWORD) throw new Error('SEED_DEMO_PASSWORD is not set (see .env.example)');

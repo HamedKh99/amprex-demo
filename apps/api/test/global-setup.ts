@@ -8,7 +8,9 @@ import { execSync } from 'node:child_process';
 export default function setup() {
   const url = process.env.E2E_DATABASE_URL;
   if (!url) throw new Error('Set E2E_DATABASE_URL to a disposable database (its data is replaced).');
-  const env = { ...process.env, DATABASE_URL: url };
+  // Override the unpooled URL too: prisma.config.ts prefers it, and a leftover value must never
+  // send this reset to another database.
+  const env = { ...process.env, DATABASE_URL: url, DATABASE_URL_UNPOOLED: url };
   execSync('npx prisma migrate deploy', { stdio: 'inherit', env });
   execSync('npx prisma db seed', { stdio: 'inherit', env });
 }
