@@ -27,6 +27,37 @@ pnpm dev            # api :4000, web :3000
 
 Swagger: http://localhost:4000/api/docs (or via the web origin: http://localhost:3000/api/docs).
 
+> Using your own Postgres instead of Docker? The database must be **UTF8**. Windows installs often
+> default to WIN1252, which cannot store Persian text: `CREATE DATABASE amprex ENCODING 'UTF8' TEMPLATE template0;`
+
+## Tests
+
+```bash
+pnpm --filter @amprex/api test                                   # unit tests
+E2E_DATABASE_URL=postgresql://…/amprex_e2e pnpm --filter @amprex/api test:e2e
+```
+
+The e2e suite (`apps/api/test`) runs `prisma migrate deploy` and then the seed, which **replaces all data** in
+`E2E_DATABASE_URL`. Use a disposable database only. It drives the whole acceptance path over HTTP and also covers:
+- out of stock, incompatible battery, a full slot and invalid transitions;
+- two orders racing for the last unit;
+- duplicate Idempotency-Key requests;
+- branch scope.
+
+## API map
+
+| Who            | Endpoints                                                                                       |
+| -------------- | ----------------------------------------------------------------------------------------------- |
+| Public (site)  | `GET catalog/vehicles`, `GET catalog/vehicles/:id/batteries?district=`, `GET lookups/availability?district=`, `POST orders` (Idempotency-Key), `GET orders/track?number=&phone=` |
+| Office         | `GET orders`, `GET orders/:id`, `POST orders/:id/assign\|cancel\|complete`, `GET users/technicians`, `GET inventory/stock`, `POST inventory/receipts` |
+| Technician     | `GET missions?view=`, `POST missions/:orderId/depart\|arrive\|install`, `POST orders/:orderId/payments` |
+| Manager/admin  | `GET reports/summary?from=&to=&branchId=`                                                       |
+
+Every status change goes through `OrderStateService.transition()`. It checks the role against the
+table in `packages/shared`, updates the order with a guard on the current status, and writes an `OrderEvent`,
+all in the caller's transaction. Order responses include `allowedTransitions`, so the UI only shows
+actions the API will accept.
+
 Demo users (password = `SEED_DEMO_PASSWORD` from `.env`):
 
 | Phone       | Role           | Branch |
@@ -53,3 +84,8 @@ Rules are in `apps/api/src/config/business-rules.ts`; demo data is in `apps/api/
 11. **Catalogue:** brands, prices and vehicle compatibility are illustrative. Compatibility uses 3 size classes (50–55Ah, 60–66Ah, 70–74Ah).
 12. **Technician logins:** only one of the 4 seeded technicians has an account (the demo TECHNICIAN user).
 13. Money is stored as BigInt Rial and sent in JSON as a decimal string. The UI shows Toman (÷10).
+14. **Anonymous orders are website orders.** Office staff may set the channel (e.g. PHONE). Branch staff can only create orders for districts their branch serves.
+15. **Core credit at installation** uses the battery's current `coreCreditRial`, not a snapshot taken at order time.
+16. **Public catalogue shows only in stock / out of stock**, not unit counts. Counts are in `inventory/stock` for staff.
+17. **Reports** cover orders *created* in the date range (Tehran days). Revenue = PAID payments of those orders, so every breakdown adds up to the KPIs.
+18. **Order tracking** is public with order number + customer phone, and returns a reduced view.
