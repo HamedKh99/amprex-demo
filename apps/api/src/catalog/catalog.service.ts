@@ -1,8 +1,27 @@
 import { Injectable } from '@nestjs/common';
+import { toLatinDigits, toPersianDigits } from '@amprex/shared';
 import { BranchesService } from '../branches/branches.service.js';
 import { notFound } from '../common/app-exception.js';
+import { BUSINESS_RULES } from '../config/business-rules.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { quote } from '../pricing/pricing.js';
+import { finalPriceExamples, quote } from '../pricing/pricing.js';
+import type { VehiclesQuery } from './catalog.dto.js';
+
+// Public battery fields: never the cost price.
+const publicBattery = {
+  id: true,
+  sku: true,
+  brand: true,
+  series: true,
+  nameFa: true,
+  capacityAh: true,
+  coldCrankingA: true,
+  voltage: true,
+  groupSize: true,
+  warrantyMonths: true,
+  priceRial: true,
+} as const;
+
 
 @Injectable()
 export class CatalogService {
@@ -11,25 +30,46 @@ export class CatalogService {
     private readonly branches: BranchesService,
   ) {}
 
-  vehicles() {
-    return this.prisma.vehicleModel.findMany({
+  /** Brands per vehicle type, in catalogue order. */
+  async brands() {
+    const rows = await this.prisma.vehicleModel.findMany({
       where: { isActive: true },
+      select: { type: true, brandFa: true },
+      orderBy: { sortOrder: 'asc' },
+    });
+    const seen = new Set<string>();
+    return rows.filter((r) => {
+      const key = `${r.type}|${r.brandFa}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  vehicles(q: VehiclesQuery) {
+    // Names store Persian digits («۲۰۶»); match either script.
+    const search = q.q?.trim();
+    return this.prisma.vehicleModel.findMany({
+      where: {
+        isActive: true,
+        type: q.type,
+        brandFa: q.brand,
+        ...(search && {
+          OR: [
+            { nameFa: { contains: toPersianDigits(toLatinDigits(search)) } },
+            { model: { contains: toLatinDigits(search), mode: 'insensitive' } },
+          ],
+        }),
+      },
       orderBy: [{ sortOrder: 'asc' }, { nameFa: 'asc' }],
     });
   }
 
-  batteries() {
-    return this.prisma.battery.findMany({
-      where: { isActive: true },
-      orderBy: [{ capacityAh: 'asc' }, { priceRial: 'asc' }],
-    });
-  }
-
   /**
-   * Batteries that fit a vehicle, recommended first, each with its price quote and
-   * (when a district is given) whether the serving branch has a free unit.
+   * Batteries that fit a vehicle: factory-spec matches first, then alternatives. Each carries
+   * its price estimate, the final-price examples and (with a district) stock at the serving branch.
    */
-  async compatibleBatteries(vehicleModelId: string, district?: number, coreReturn = true) {
+  async compatibleBatteries(vehicleModelId: string, district?: number, availableOnly = false) {
     const vehicle = await this.prisma.vehicleModel.findFirst({
       where: { id: vehicleModelId, isActive: true },
     });
@@ -37,8 +77,8 @@ export class CatalogService {
 
     const links = await this.prisma.batteryCompatibility.findMany({
       where: { vehicleModelId, battery: { isActive: true } },
-      include: { battery: true },
-      orderBy: [{ isRecommended: 'desc' }, { battery: { priceRial: 'asc' } }],
+      include: { battery: { select: publicBattery } },
+      orderBy: [{ matchesFactorySpec: 'desc' }, { battery: { priceRial: 'asc' } }],
     });
 
     const branch = district ? await this.branches.forDistrict(district) : null;
@@ -49,15 +89,21 @@ export class CatalogService {
       : [];
     const free = new Map(stock.map((s) => [s.batteryId, s.onHand - s.reserved]));
 
+    const batteries = links
+      .map(({ battery, matchesFactorySpec }) => ({
+        ...battery,
+        matchesFactorySpec,
+        price: quote(battery),
+        finalPriceExamples: finalPriceExamples(battery),
+        inStock: branch ? (free.get(battery.id) ?? 0) > 0 : null,
+      }))
+      .filter((b) => !(availableOnly && branch) || b.inStock);
+
     return {
       vehicle,
       branch: branch && { id: branch.id, name: branch.name },
-      batteries: links.map(({ battery, isRecommended }) => ({
-        ...battery,
-        isRecommended,
-        price: quote(battery, coreReturn),
-        inStock: branch ? (free.get(battery.id) ?? 0) > 0 : null,
-      })),
+      coreCreditPerAhRial: BUSINESS_RULES.coreCreditPerAhRial,
+      batteries,
     };
   }
 }

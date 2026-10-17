@@ -3,6 +3,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsInt, Max, Min } from 'class-validator';
 import { Public } from '../auth/decorators.js';
+import { BUSINESS_RULES } from '../config/business-rules.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { SchedulingService } from './scheduling.service.js';
 
@@ -31,6 +32,18 @@ export class LookupsController {
   @Get('slots')
   slots() {
     return this.prisma.serviceSlot.findMany({ where: { isActive: true }, orderBy: { sortOrder: 'asc' } });
+  }
+
+  /** Public settings the site shows (support phone, old-battery credit rate). */
+  @Get('settings')
+  settings() {
+    return {
+      supportPhone: BUSINESS_RULES.supportPhone,
+      coreCreditPerAhRial: BUSINESS_RULES.coreCreditPerAhRial,
+      coreAhMin: BUSINESS_RULES.coreAhMin,
+      coreAhMax: BUSINESS_RULES.coreAhMax,
+      bookingDays: BUSINESS_RULES.bookingDays,
+    };
   }
 
   /** Bookable dates and slots with remaining capacity, for the branch serving the district. */

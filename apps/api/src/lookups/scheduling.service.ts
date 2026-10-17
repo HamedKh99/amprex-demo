@@ -1,11 +1,15 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { BranchesService } from '../branches/branches.service.js';
 import { AppException, notFound } from '../common/app-exception.js';
-import { bookingWindow, dateOnly, formatDateOnly } from '../common/tehran-time.js';
-import type { Prisma } from '../generated/prisma/client.js';
+import { bookingWindow, dateOnly, formatDateOnly, tehranDate, tehranTime } from '../common/tehran-time.js';
+import { BUSINESS_RULES } from '../config/business-rules.js';
+import type { Prisma, ServiceSlot } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 type Tx = Prisma.TransactionClient;
+
+/** OPEN: bookable; CLOSED: today's slot is too close or past; FULL: no capacity left. */
+export type SlotState = 'OPEN' | 'CLOSED' | 'FULL';
 
 /** Installation slots: booking window and per-branch capacity. */
 @Injectable()
@@ -14,6 +18,12 @@ export class SchedulingService {
     private readonly prisma: PrismaService,
     private readonly branches: BranchesService,
   ) {}
+
+  /** A slot on a day can still be booked if it starts at least the lead time from now. */
+  isOpen(date: string, slot: Pick<ServiceSlot, 'startTime'>, now = Date.now()) {
+    if (date !== tehranDate(now)) return true;
+    return tehranTime(date, slot.startTime).getTime() - now >= BUSINESS_RULES.sameDayLeadMinutes * 60_000;
+  }
 
   /** Every bookable day × slot for the branch serving a district, with remaining capacity. */
   async availability(district: number) {
@@ -32,13 +42,14 @@ export class SchedulingService {
       }),
     ]);
     const used = new Map(booked.map((b) => [`${formatDateOnly(b.scheduledDate)}|${b.slotId}`, b._count]));
+    const today = tehranDate();
 
     return {
       branch: { id: branch.id, name: branch.name },
-      days: days.map((date) => ({
-        date,
-        slots: slots.map((s) => {
-          const taken = used.get(`${date}|${s.id}`) ?? 0;
+      days: days.map((date) => {
+        const daySlots = slots.map((s) => {
+          const remaining = Math.max(0, s.capacity - (used.get(`${date}|${s.id}`) ?? 0));
+          const state: SlotState = !this.isOpen(date, s) ? 'CLOSED' : remaining === 0 ? 'FULL' : 'OPEN';
           return {
             id: s.id,
             code: s.code,
@@ -46,10 +57,12 @@ export class SchedulingService {
             startTime: s.startTime,
             endTime: s.endTime,
             capacity: s.capacity,
-            remaining: Math.max(0, s.capacity - taken),
+            remaining: state === 'CLOSED' ? 0 : remaining,
+            state,
           };
-        }),
-      })),
+        });
+        return { date, isToday: date === today, isFull: daySlots.every((s) => s.state !== 'OPEN'), slots: daySlots };
+      }),
     };
   }
 
@@ -59,7 +72,7 @@ export class SchedulingService {
       throw new AppException(
         HttpStatus.UNPROCESSABLE_ENTITY,
         'INVALID_BOOKING_DATE',
-        'تاریخ نصب باید از فردا تا یک هفته آینده باشد.',
+        'تاریخ نصب باید از امروز تا هفت روز آینده باشد.',
         { date, allowed: window },
       );
     }
@@ -72,6 +85,14 @@ export class SchedulingService {
   async claimSlot(tx: Tx, branchId: string, date: string, slotId: string) {
     const slot = await tx.serviceSlot.findFirst({ where: { id: slotId, isActive: true } });
     if (!slot) throw notFound('بازه زمانی');
+    if (!this.isOpen(date, slot)) {
+      throw new AppException(
+        HttpStatus.CONFLICT,
+        'SLOT_FULL',
+        'این بازه زمانی دیگر قابل رزرو نیست. لطفاً زمان دیگری انتخاب کنید.',
+        { date, slotId, reason: 'CLOSED' },
+      );
+    }
 
     const lockKey = `slot:${branchId}:${date}:${slotId}`;
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
@@ -83,7 +104,7 @@ export class SchedulingService {
         HttpStatus.CONFLICT,
         'SLOT_FULL',
         'ظرفیت این بازه زمانی تکمیل شده است. لطفاً زمان دیگری انتخاب کنید.',
-        { date, slotId },
+        { date, slotId, reason: 'FULL' },
       );
     }
     return slot;
