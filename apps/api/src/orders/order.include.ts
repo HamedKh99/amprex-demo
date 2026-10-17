@@ -6,12 +6,10 @@ export const orderListInclude = {
   customer: { select: { id: true, fullName: true, phone: true } },
   branch: { select: { id: true, code: true, name: true } },
   channel: { select: { id: true, code: true, nameFa: true } },
-  vehicleModel: { select: { id: true, nameFa: true } },
-  battery: { select: { id: true, sku: true, nameFa: true } },
+  vehicleModel: { select: { id: true, nameFa: true, brandFa: true, type: true } },
+  battery: { select: { id: true, sku: true, nameFa: true, capacityAh: true } },
   slot: { select: { id: true, code: true, label: true, startTime: true, endTime: true } },
-  mission: {
-    select: { technician: { select: { id: true, fullName: true } } },
-  },
+  mission: { select: { technician: { select: { id: true, fullName: true } } } },
 } satisfies Prisma.OrderInclude;
 
 export const orderDetailInclude = {
@@ -19,10 +17,33 @@ export const orderDetailInclude = {
   branch: { select: { id: true, code: true, name: true, phone: true } },
   channel: true,
   vehicleModel: true,
-  battery: true,
+  battery: {
+    select: {
+      id: true,
+      sku: true,
+      brand: true,
+      series: true,
+      nameFa: true,
+      capacityAh: true,
+      coldCrankingA: true,
+      groupSize: true,
+      warrantyMonths: true,
+    },
+  },
   slot: true,
   mission: { include: { technician: { select: { id: true, fullName: true, phone: true } } } },
   coreReturn: true,
   payments: { orderBy: { createdAt: 'asc' }, include: { receivedBy: userBrief } },
   events: { orderBy: { createdAt: 'asc' }, include: { actor: userBrief } },
+  movements: {
+    orderBy: { createdAt: 'asc' },
+    select: {
+      id: true,
+      type: true,
+      quantity: true,
+      createdAt: true,
+      branch: { select: { name: true } },
+      actor: userBrief,
+    },
+  },
 } satisfies Prisma.OrderInclude;

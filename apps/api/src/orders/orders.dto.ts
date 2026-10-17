@@ -1,4 +1,4 @@
-import { ORDER_STATUSES, type OrderStatus } from '@amprex/shared';
+import { INSTALL_LOCATIONS, ORDER_STATUSES, type InstallLocation, type OrderStatus } from '@amprex/shared';
 import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
@@ -48,6 +48,10 @@ export class CreateOrderDto {
   @MaxLength(300)
   address: string;
 
+  /** «محل نصب» */
+  @IsIn(INSTALL_LOCATIONS)
+  installLocation: InstallLocation;
+
   /** Installation day, Gregorian "YYYY-MM-DD" (Tehran calendar day). */
   @NormalizeText()
   @Matches(DATE_ONLY)
@@ -56,10 +60,12 @@ export class CreateOrderDto {
   @IsUUID()
   slotId: string;
 
-  /** Customer will hand over the old battery (باتری داغی). */
+  /** The customer has an old battery to hand over (default true); drives the estimate. */
+  @IsOptional()
   @IsBoolean()
-  coreReturnExpected: boolean;
+  hasOldBattery: boolean = true;
 
+  /** «توضیح برای تکنسین» */
   @IsOptional()
   @NormalizeText()
   @IsString()
@@ -92,7 +98,12 @@ export class ListOrdersQuery extends PageQuery {
   @IsUUID()
   branchId?: string;
 
-  /** Order number or customer phone/name fragment. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  channelCode?: string;
+
+  /** Order code, customer phone or name fragment. */
   @IsOptional()
   @NormalizeText()
   @IsString()
@@ -110,13 +121,15 @@ export class ListOrdersQuery extends PageQuery {
 }
 
 export class TrackOrderQuery {
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  number: number;
+  /** «کد پیگیری», e.g. AMX-050725-K7Q2 */
+  @NormalizeText()
+  @Transform(({ value }) => (typeof value === 'string' ? value.toUpperCase() : value))
+  @IsString()
+  @MaxLength(30)
+  code: string;
 
   @NormalizeText()
-  @Matches(IRAN_MOBILE)
+  @Matches(IRAN_MOBILE, { message: 'شماره موبایل باید ۱۱ رقم و با ۰۹ شروع شود.' })
   phone: string;
 }
 
@@ -124,7 +137,9 @@ export class AssignDto {
   @IsUUID()
   technicianId: string;
 
+  /** «یادداشت برای تکنسین»; stored as the order's branch note. */
   @IsOptional()
+  @NormalizeText()
   @IsString()
   @MaxLength(300)
   note?: string;
@@ -136,11 +151,4 @@ export class CancelDto {
   @MinLength(3)
   @MaxLength(300)
   reason: string;
-}
-
-export class NoteDto {
-  @IsOptional()
-  @IsString()
-  @MaxLength(300)
-  note?: string;
 }

@@ -1,21 +1,23 @@
 import { canTransition, nextStatuses } from '@amprex/shared';
 
 describe('order transitions', () => {
-  it('lets only office roles assign and complete', () => {
+  it('lets only office roles assign', () => {
     expect(canTransition('CREATED', 'ASSIGNED', 'OPERATOR')).toBe(true);
     expect(canTransition('CREATED', 'ASSIGNED', 'TECHNICIAN')).toBe(false);
-    expect(canTransition('PAID', 'COMPLETED', 'TECHNICIAN')).toBe(false);
   });
 
-  it('runs the field steps for technicians in order', () => {
-    expect(nextStatuses('ASSIGNED', 'TECHNICIAN')).toEqual(['EN_ROUTE']);
+  it('runs the five field steps for technicians in order', () => {
+    expect(nextStatuses('ASSIGNED', 'TECHNICIAN')).toEqual(['ACCEPTED']);
+    expect(nextStatuses('ACCEPTED', 'TECHNICIAN')).toEqual(['EN_ROUTE']);
     expect(nextStatuses('EN_ROUTE', 'TECHNICIAN')).toEqual(['ON_SITE']);
-    expect(nextStatuses('ON_SITE', 'TECHNICIAN')).toEqual(['INSTALLED']);
-    expect(nextStatuses('INSTALLED', 'TECHNICIAN')).toEqual(['PAID']);
+    expect(nextStatuses('ON_SITE', 'TECHNICIAN')).toEqual(['INSTALLING']);
+    expect(nextStatuses('INSTALLING', 'TECHNICIAN')).toEqual(['COMPLETED']);
   });
 
-  it('forbids cancelling after installation and leaving terminal states', () => {
-    expect(canTransition('INSTALLED', 'CANCELLED', 'SUPER_ADMIN')).toBe(false);
+  it('lets the office reassign or cancel until completion, never after', () => {
+    expect(nextStatuses('ACCEPTED', 'OPERATOR')).toEqual(['ASSIGNED', 'CANCELLED']);
+    expect(canTransition('INSTALLING', 'CANCELLED', 'BRANCH_MANAGER')).toBe(true);
+    expect(canTransition('INSTALLING', 'COMPLETED', 'OPERATOR')).toBe(false);
     expect(nextStatuses('COMPLETED', 'SUPER_ADMIN')).toEqual([]);
     expect(nextStatuses('CANCELLED', 'SUPER_ADMIN')).toEqual([]);
   });

@@ -23,7 +23,6 @@ import {
   CancelDto,
   CreateOrderDto,
   ListOrdersQuery,
-  NoteDto,
   TrackOrderQuery,
 } from './orders.dto.js';
 import { OrdersService } from './orders.service.js';
@@ -64,7 +63,13 @@ export class OrdersController {
   @Public()
   @Get('track')
   track(@Query() q: TrackOrderQuery) {
-    return this.orders.track(q.number, q.phone);
+    return this.orders.track(q.code, q.phone);
+  }
+
+  /** Badge counts for the admin navigation. */
+  @Get('counts')
+  counts(@CurrentUser() user: AuthUser) {
+    return this.orders.counts(user);
   }
 
   @Get()
@@ -77,7 +82,14 @@ export class OrdersController {
     return this.orders.get(user, id);
   }
 
-  /** Assign or reassign the technician. */
+  /** Technicians for the assignment sheet: zone, load that day, and the system suggestion. */
+  @Roles('SUPER_ADMIN', 'BRANCH_MANAGER', 'OPERATOR')
+  @Get(':id/technicians')
+  technicians(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.orders.technicianOptions(user, id);
+  }
+
+  /** Assign or reassign the technician; the optional note becomes the branch note. */
   @Roles('SUPER_ADMIN', 'BRANCH_MANAGER', 'OPERATOR')
   @Post(':id/assign')
   @HttpCode(200)
@@ -90,12 +102,5 @@ export class OrdersController {
   @HttpCode(200)
   cancel(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CancelDto) {
     return this.orders.cancel(user, id, dto.reason);
-  }
-
-  @Roles('SUPER_ADMIN', 'BRANCH_MANAGER', 'OPERATOR')
-  @Post(':id/complete')
-  @HttpCode(200)
-  complete(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: NoteDto) {
-    return this.orders.complete(user, id, dto.note);
   }
 }
