@@ -129,6 +129,7 @@ export interface OrderDetail {
   coreCreditRial: Rial;
   totalRial: Rial;
   cancelReason: string | null;
+  cancelledAt: string | null;
   createdAt: string;
   completedAt: string | null;
   customer: { id: string; fullName: string; phone: string };
@@ -171,6 +172,7 @@ export interface OrderDetail {
   events: OrderEvent[];
   movements: { id: string; type: string; quantity: number; createdAt: string; branch: { name: string }; actor: UserBrief | null }[];
   slotLoad: { booked: number; capacity: number };
+  batteryMatchesFactorySpec: boolean;
   customerHistory: { previousOrders: number; firstOrderAt: string | null };
   financials: { batteryCostRial: Rial; coreScrapValueRial: Rial; grossProfitRial: Rial; isEstimate: boolean } | null;
   allowedTransitions: OrderStatus[];

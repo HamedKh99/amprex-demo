@@ -3,7 +3,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './api';
 import { saveSession, type SessionUser } from './session';
-import type { Mission, OrderDetail, Settings, Settlement } from './types';
+import type { Dashboard, Mission, OrderDetail, OrderListItem, Page, Settings, Settlement, TechnicianOption } from './types';
 
 export const keys = {
   settings: ['settings'] as const,
@@ -58,3 +58,41 @@ export function useOrderMutation<V>(id: string, fn: (v: V) => Promise<OrderDetai
     },
   });
 }
+
+// ── admin ──
+
+export const useOrderCounts = () =>
+  useQuery({ queryKey: ['orders', 'counts'], queryFn: () => api<{ waitingAssignment: number }>('/orders/counts'), refetchInterval: 60_000 });
+
+export const useTechnicianOptions = (orderId: string, enabled: boolean) =>
+  useQuery({
+    queryKey: ['order', orderId, 'technicians'],
+    queryFn: () => api<TechnicianOption[]>(`/orders/${orderId}/technicians`),
+    enabled,
+  });
+
+export interface OrdersFilter {
+  page: number;
+  pageSize: number;
+  q?: string;
+  status?: string;
+  channelCode?: string;
+  branchId?: string;
+  from?: string;
+  to?: string;
+}
+export const useOrders = (f: OrdersFilter) =>
+  useQuery({
+    queryKey: ['orders', 'list', f],
+    queryFn: ({ signal }) => api<Page<OrderListItem>>('/orders', { query: { ...f }, signal }),
+    placeholderData: keepPreviousData,
+  });
+
+export const useChannels = () =>
+  useQuery({ queryKey: ['channels'], queryFn: () => api<{ id: string; code: string; nameFa: string }[]>('/lookups/channels', { auth: false }), staleTime: Infinity });
+
+export const useBranches = () =>
+  useQuery({ queryKey: ['branches'], queryFn: () => api<{ id: string; code: string; name: string }[]>('/branches'), staleTime: Infinity });
+
+export const useDashboard = () =>
+  useQuery({ queryKey: ['dashboard'], queryFn: () => api<Dashboard>('/dashboard'), refetchInterval: 60_000 });
