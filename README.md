@@ -12,6 +12,10 @@ installation + core return (باتری داغی) → payment → completion → 
 | `apps/web`        | Next.js 16 App Router: `/` (site), `/admin`, `/tech`; proxies `/api` |
 | `packages/shared` | Statuses, Persian labels, roles, allowed transitions, error codes    |
 
+Workspace package names are `@amprex/api`, `@amprex/web` and `@amprex/shared`; use them with
+`pnpm --filter` (`--filter api` matches nothing), e.g. `pnpm --filter @amprex/web build`. Each app's
+`prebuild` builds `@amprex/shared` first, since its `dist/` is not committed.
+
 ## Run locally
 
 Requires Node 24 and pnpm 10.34.7 (`corepack enable` or `npx pnpm@10.34.7`).
@@ -21,11 +25,17 @@ cp .env.example .env
 pnpm install
 pnpm db:up          # Postgres 17 in Docker (or point DATABASE_URL at your own)
 pnpm db:migrate
-pnpm db:seed        # wipes and recreates demo data
+pnpm db:seed        # wipes and recreates demo data (local databases only, see below)
 pnpm dev            # api :4000, web :3000
 ```
 
 Swagger: http://localhost:4000/api/docs (or via the web origin: http://localhost:3000/api/docs).
+Its DTO schemas come from `apps/api/src/metadata.ts`, so the docs are the same whichever compiler
+builds the API. After changing a DTO, run `pnpm --filter @amprex/api swagger:metadata` and commit the file
+(the build regenerates it too, and CI fails if it is stale).
+
+The seed deletes all data, so it refuses any database that is not on localhost. For a deliberate
+one-time seed of a remote database, pass `SEED_ALLOW_REMOTE=1` on the command line.
 
 > Using your own Postgres instead of Docker? The database must be **UTF8**. Windows installs often
 > default to WIN1252, which cannot store Persian text: `CREATE DATABASE amprex ENCODING 'UTF8' TEMPLATE template0;`
@@ -38,7 +48,7 @@ E2E_DATABASE_URL=postgresql://…/amprex_e2e pnpm --filter @amprex/api test:e2e
 ```
 
 The e2e suite (`apps/api/test`) runs `prisma migrate deploy` and then the seed, which **replaces all data** in
-`E2E_DATABASE_URL`. Use a disposable database only. It drives the whole acceptance path over HTTP and also covers:
+`E2E_DATABASE_URL`. Use a disposable database only (a non-local one also needs `SEED_ALLOW_REMOTE=1`). It drives the whole acceptance path over HTTP and also covers:
 - out of stock, incompatible battery, a full slot and invalid transitions;
 - two orders racing for the last unit;
 - duplicate Idempotency-Key requests;
