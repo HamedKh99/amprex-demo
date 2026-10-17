@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Typecheck, unit tests, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # No version: reads "packageManager" (pnpm@10.34.7) from package.json.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      # Same command Vercel runs; fails on ERR_PNPM_OUTDATED_LOCKFILE instead of rewriting the lockfile.
+      - run: pnpm install --frozen-lockfile
+      # packages/shared/dist is gitignored and both apps typecheck against it.
+      - run: pnpm --filter @amprex/shared build
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+  e2e:
+    name: Acceptance path (Postgres)
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: amprex
+          POSTGRES_PASSWORD: amprex_ci_only
+          POSTGRES_DB: amprex_e2e
+          TZ: Asia/Tehran
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U amprex -d amprex_e2e"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    # Throwaway values for a disposable CI database; not secrets.
+    env:
+      E2E_DATABASE_URL: postgresql://amprex:amprex_ci_only@localhost:5432/amprex_e2e?schema=public
+      JWT_SECRET: ci-only-not-a-real-secret-ci-only-not-a-real-secret
+      SEED_DEMO_PASSWORD: Ci@e2e-demo-1405
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @amprex/shared build
+      - run: pnpm --filter @amprex/api test:e2e
