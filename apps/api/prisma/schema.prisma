@@ -1,0 +1,393 @@
+// AMPREX demo — operating core schema.
+// Money columns are BigInt Rial. Enum values mirror packages/shared.
+// Connection URL lives in prisma.config.ts (Prisma 7).
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────── Enums ─────────────────────────
+
+enum Role {
+  SUPER_ADMIN
+  BRANCH_MANAGER
+  OPERATOR
+  TECHNICIAN
+}
+
+enum OrderStatus {
+  CREATED
+  ASSIGNED
+  EN_ROUTE
+  ON_SITE
+  INSTALLED
+  PAID
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD_POS
+  CARD_TO_CARD
+  ONLINE
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum CoreCondition {
+  INTACT
+  DAMAGED
+  NOT_RETURNED
+}
+
+enum StockMovementType {
+  RECEIPT
+  RESERVE
+  RELEASE
+  ISSUE
+  ADJUST
+}
+
+// ───────────────────── Organisation ─────────────────────
+
+model Branch {
+  id               String   @id @default(uuid(7)) @db.Uuid
+  code             String   @unique
+  name             String
+  address          String
+  phone            String
+  /// Tehran municipal districts (1–22) this branch serves; used to route new orders.
+  serviceDistricts Int[]
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(3)
+
+  users       User[]
+  technicians Technician[]
+  stock       Stock[]
+  movements   StockMovement[]
+  orders      Order[]
+}
+
+model User {
+  id           String    @id @default(uuid(7)) @db.Uuid
+  /// Login identifier (mobile number, 09xxxxxxxxx).
+  phone        String    @unique
+  fullName     String
+  passwordHash String
+  role         Role
+  /// Required for branch-scoped roles; null only for SUPER_ADMIN.
+  branchId     String?   @db.Uuid
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime? @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
+
+  branch      Branch?         @relation(fields: [branchId], references: [id])
+  technician  Technician?
+  orderEvents OrderEvent[]
+  payments    Payment[]       @relation("PaymentReceivedBy")
+  movements   StockMovement[]
+
+  @@index([branchId, role])
+}
+
+model Technician {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  branchId  String   @db.Uuid
+  /// Login account; a technician without one cannot use /tech.
+  userId    String?  @unique @db.Uuid
+  fullName  String
+  phone     String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  branch   Branch    @relation(fields: [branchId], references: [id])
+  user     User?     @relation(fields: [userId], references: [id])
+  missions Mission[]
+
+  @@index([branchId, isActive])
+}
+
+// ─────────────────────── Catalogue ───────────────────────
+
+model VehicleModel {
+  id        String  @id @default(uuid(7)) @db.Uuid
+  code      String  @unique
+  make      String
+  model     String
+  /// Persian display name, e.g. «پژو ۲۰۶».
+  nameFa    String
+  yearFrom  Int?
+  yearTo    Int?
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(0)
+
+  compatibilities BatteryCompatibility[]
+  orders          Order[]
+}
+
+model Battery {
+  id             String  @id @default(uuid(7)) @db.Uuid
+  sku            String  @unique
+  brand          String
+  nameFa         String
+  capacityAh     Int
+  coldCrankingA  Int
+  voltage        Int     @default(12)
+  /// Physical case group (e.g. L2, L3) — informational.
+  groupSize      String
+  warrantyMonths Int
+  /// Price of the battery without core return, Rial.
+  priceRial      BigInt
+  /// Discount when the old battery (باتری داغی) is returned intact, Rial.
+  coreCreditRial BigInt
+  isActive       Boolean @default(true)
+
+  compatibilities BatteryCompatibility[]
+  stock           Stock[]
+  movements       StockMovement[]
+  orders          Order[]
+}
+
+model BatteryCompatibility {
+  vehicleModelId String  @db.Uuid
+  batteryId      String  @db.Uuid
+  /// Shown first to the customer / operator.
+  isRecommended  Boolean @default(false)
+
+  vehicleModel VehicleModel @relation(fields: [vehicleModelId], references: [id], onDelete: Cascade)
+  battery      Battery      @relation(fields: [batteryId], references: [id], onDelete: Cascade)
+
+  @@id([vehicleModelId, batteryId])
+  @@index([batteryId])
+}
+
+// ─────────────────────── Inventory ───────────────────────
+
+/// available = onHand − reserved. Reserve is a single conditional UPDATE:
+///   UPDATE "Stock" SET reserved = reserved + 1
+///   WHERE "branchId" = $1 AND "batteryId" = $2 AND "onHand" - reserved >= 1
+/// 0 rows → 409 OUT_OF_STOCK. A CHECK constraint (migration) keeps 0 ≤ reserved ≤ onHand.
+model Stock {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  branchId  String   @db.Uuid
+  batteryId String   @db.Uuid
+  onHand    Int      @default(0)
+  reserved  Int      @default(0)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  branch  Branch  @relation(fields: [branchId], references: [id])
+  battery Battery @relation(fields: [batteryId], references: [id])
+
+  @@unique([branchId, batteryId])
+}
+
+/// Append-only ledger of stock changes (audit + reports).
+model StockMovement {
+  id          String            @id @default(uuid(7)) @db.Uuid
+  branchId    String            @db.Uuid
+  batteryId   String            @db.Uuid
+  type        StockMovementType
+  /// Signed delta applied to onHand (RECEIPT/ISSUE/ADJUST) or reserved (RESERVE/RELEASE).
+  quantity    Int
+  orderId     String?           @db.Uuid
+  actorUserId String?           @db.Uuid
+  note        String?
+  createdAt   DateTime          @default(now()) @db.Timestamptz(3)
+
+  branch  Branch  @relation(fields: [branchId], references: [id])
+  battery Battery @relation(fields: [batteryId], references: [id])
+  order   Order?  @relation(fields: [orderId], references: [id])
+  actor   User?   @relation(fields: [actorUserId], references: [id])
+
+  @@index([branchId, batteryId, createdAt])
+  @@index([orderId])
+}
+
+// ─────────────────────── Lookups ───────────────────────
+
+/// Sales channel the order came from (website, phone, Instagram, …).
+model Channel {
+  id        String  @id @default(uuid(7)) @db.Uuid
+  code      String  @unique
+  nameFa    String
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(0)
+
+  orders Order[]
+}
+
+/// Daily installation time window. Capacity is per branch per day.
+model ServiceSlot {
+  id        String  @id @default(uuid(7)) @db.Uuid
+  code      String  @unique
+  label     String
+  /// "HH:mm", Tehran local time.
+  startTime String
+  endTime   String
+  capacity  Int
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(0)
+
+  orders Order[]
+}
+
+// ─────────────────────── Orders ───────────────────────
+
+model Customer {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  phone     String   @unique
+  fullName  String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  orders Order[]
+}
+
+model Order {
+  id             String      @id @default(uuid(7)) @db.Uuid
+  /// Human-facing number (shown as e.g. «سفارش ۱۰۴۲»).
+  number         Int         @unique @default(autoincrement())
+  /// Client-supplied Idempotency-Key header of POST /orders.
+  idempotencyKey String      @unique
+  status         OrderStatus @default(CREATED)
+
+  customerId     String @db.Uuid
+  branchId       String @db.Uuid
+  channelId      String @db.Uuid
+  vehicleModelId String @db.Uuid
+  batteryId      String @db.Uuid
+  slotId         String @db.Uuid
+
+  /// Installation day (Tehran local date).
+  scheduledDate DateTime @db.Date
+  district      Int
+  address       String
+  latitude      Decimal? @db.Decimal(9, 6)
+  longitude     Decimal? @db.Decimal(9, 6)
+  customerNote  String?
+
+  /// Customer says they will hand over the old battery; final outcome is in CoreReturn.
+  coreReturnExpected Boolean @default(true)
+
+  // Price snapshot computed by the API (Rial); the UI only displays it.
+  // totalRial = batteryPriceRial + installFeeRial − coreCreditRial.
+  // coreCreditRial is an estimate until INSTALLED, then set from CoreReturn.creditAppliedRial.
+  batteryPriceRial BigInt
+  installFeeRial   BigInt
+  coreCreditRial   BigInt
+  totalRial        BigInt
+
+  createdById  String?   @db.Uuid
+  cancelReason String?
+  completedAt  DateTime? @db.Timestamptz(3)
+  cancelledAt  DateTime? @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
+
+  customer     Customer        @relation(fields: [customerId], references: [id])
+  branch       Branch          @relation(fields: [branchId], references: [id])
+  channel      Channel         @relation(fields: [channelId], references: [id])
+  vehicleModel VehicleModel    @relation(fields: [vehicleModelId], references: [id])
+  battery      Battery         @relation(fields: [batteryId], references: [id])
+  slot         ServiceSlot     @relation(fields: [slotId], references: [id])
+  mission      Mission?
+  coreReturn   CoreReturn?
+  payments     Payment[]
+  events       OrderEvent[]
+  movements    StockMovement[]
+
+  @@index([branchId, status])
+  @@index([branchId, scheduledDate, slotId])
+  @@index([status, createdAt])
+  @@index([customerId])
+  @@index([createdAt])
+}
+
+/// Written by OrderStateService.transition() for every status change (and creation).
+model OrderEvent {
+  id          String       @id @default(uuid(7)) @db.Uuid
+  orderId     String       @db.Uuid
+  fromStatus  OrderStatus?
+  toStatus    OrderStatus
+  actorUserId String?      @db.Uuid
+  note        String?
+  /// Extra context, e.g. { technicianId } on ASSIGNED.
+  data        Json?
+  createdAt   DateTime     @default(now()) @db.Timestamptz(3)
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  actor User? @relation(fields: [actorUserId], references: [id])
+
+  @@index([orderId, createdAt])
+  @@index([toStatus, createdAt])
+}
+
+/// The technician's job for one order (one active mission per order in this demo).
+model Mission {
+  id           String @id @default(uuid(7)) @db.Uuid
+  orderId      String @unique @db.Uuid
+  technicianId String @db.Uuid
+
+  assignedAt  DateTime  @default(now()) @db.Timestamptz(3)
+  departedAt  DateTime? @db.Timestamptz(3)
+  arrivedAt   DateTime? @db.Timestamptz(3)
+  installedAt DateTime? @db.Timestamptz(3)
+
+  /// Serial printed on the new battery that was installed.
+  installedSerial String?
+  technicianNote  String?
+
+  order      Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  technician Technician @relation(fields: [technicianId], references: [id])
+
+  @@index([technicianId, assignedAt])
+}
+
+/// Outcome of the old-battery (باتری داغی) handover, recorded at INSTALLED.
+model CoreReturn {
+  id              String        @id @default(uuid(7)) @db.Uuid
+  orderId         String        @unique @db.Uuid
+  condition       CoreCondition
+  /// Brand / capacity of the old battery as seen by the technician.
+  oldBatteryNote  String?
+  /// Credit actually granted (0 when NOT_RETURNED or rejected as DAMAGED), Rial.
+  creditAppliedRial BigInt
+  recordedAt      DateTime      @default(now()) @db.Timestamptz(3)
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+model Payment {
+  id           String        @id @default(uuid(7)) @db.Uuid
+  orderId      String        @db.Uuid
+  amountRial   BigInt
+  method       PaymentMethod
+  status       PaymentStatus @default(PENDING)
+  /// POS / bank / gateway reference.
+  reference    String?
+  receivedById String?       @db.Uuid
+  paidAt       DateTime?     @db.Timestamptz(3)
+  createdAt    DateTime      @default(now()) @db.Timestamptz(3)
+
+  order      Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  receivedBy User? @relation("PaymentReceivedBy", fields: [receivedById], references: [id])
+
+  @@index([orderId])
+  @@index([status, paidAt])
+}
