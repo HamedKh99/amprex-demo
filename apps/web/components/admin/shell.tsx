@@ -1,6 +1,6 @@
 'use client';
 
-import { ROLE_LABELS } from '@amprex/shared';
+import { ROLE_LABELS, type Role } from '@amprex/shared';
 import { BarChart3, ChevronDown, ClipboardList, LayoutDashboard, LogOut, Package } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import Link from 'next/link';
@@ -16,15 +16,16 @@ interface NavItem {
   label: string;
   href: string;
   icon: LucideIcon;
-  /** Screens not built in this version are shown but not linked. */
-  ready: boolean;
+  /** Roles that may open the screen; others see it greyed out. */
+  roles: readonly Role[];
 }
 
+const OFFICE: readonly Role[] = ['SUPER_ADMIN', 'BRANCH_MANAGER', 'OPERATOR'];
 const NAV: NavItem[] = [
-  { label: 'داشبورد', href: '/admin', icon: LayoutDashboard, ready: true },
-  { label: 'سفارش‌ها', href: '/admin/orders', icon: ClipboardList, ready: true },
-  { label: 'موجودی انبار', href: '/admin/inventory', icon: Package, ready: false },
-  { label: 'گزارش‌ها', href: '/admin/reports', icon: BarChart3, ready: false },
+  { label: 'داشبورد', href: '/admin', icon: LayoutDashboard, roles: OFFICE },
+  { label: 'سفارش‌ها', href: '/admin/orders', icon: ClipboardList, roles: OFFICE },
+  { label: 'موجودی انبار', href: '/admin/inventory', icon: Package, roles: OFFICE },
+  { label: 'گزارش‌ها', href: '/admin/reports', icon: BarChart3, roles: ['SUPER_ADMIN', 'BRANCH_MANAGER'] },
 ];
 
 /** Design: 240px sidebar beside the content; wraps above it on narrow screens. */
@@ -57,9 +58,9 @@ export function AdminShell({ user, children }: { user: SessionUser; children: Re
             const cls = cn(
               'flex h-10 items-center gap-2.5 rounded-control px-3 text-sm font-medium text-slate-700 no-underline',
               active ? 'bg-muted font-bold text-foreground' : 'hover:bg-muted hover:text-foreground',
-              !n.ready && 'pointer-events-none opacity-50',
+              !n.roles.includes(user.role) && 'pointer-events-none opacity-50',
             );
-            return n.ready ? (
+            return n.roles.includes(user.role) ? (
               <Link key={n.href} href={n.href} aria-current={active ? 'page' : undefined} className={cls}>
                 {inner}
               </Link>

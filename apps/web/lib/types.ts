@@ -266,3 +266,51 @@ export interface Dashboard {
     current: OrderStatus | 'FREE' | 'FULL';
   }[];
 }
+
+export interface StockView {
+  branch: { id: string; code: string; name: string };
+  items: {
+    id: string;
+    battery: { id: string; sku: string; nameFa: string; capacityAh: number };
+    onHand: number;
+    reserved: number;
+    available: number;
+    reorderPoint: number;
+    belowReorder: boolean;
+  }[];
+  totals: { onHand: number; reserved: number; available: number };
+  belowReorderCount: number;
+  core: { count: number; ampereHours: number };
+}
+
+export type LedgerType = 'RECEIPT' | 'RESERVE' | 'RELEASE' | 'ISSUE' | 'ADJUST' | 'TRANSFER' | 'CORE_RETURN';
+export interface LedgerRow {
+  id: string;
+  at: string;
+  type: LedgerType;
+  quantity: number;
+  balance: number;
+  sku: string | null;
+  productNameFa: string | null;
+  coreAh: number | null;
+  reference: string | null;
+  actorName: string | null;
+  note: string | null;
+}
+
+export type SalesGroup = 'product' | 'channel' | 'product_channel';
+interface SalesSums {
+  count: number;
+  grossRial: Rial;
+  creditRial: Rial;
+  netRial: Rial;
+  costRial: Rial;
+  profitRial: Rial;
+  marginPercent: number;
+}
+export interface SalesReport {
+  range: { from: string; to: string; branchId: string | null };
+  groupBy: SalesGroup;
+  totals: SalesSums;
+  rows: (SalesSums & { sku: string | null; productNameFa: string | null; channelCode: string | null; channelNameFa: string | null })[];
+}

@@ -8,6 +8,11 @@ import type {
   Availability,
   CompatibleBatteries,
   Dashboard,
+  LedgerRow,
+  LedgerType,
+  SalesGroup,
+  SalesReport,
+  StockView,
   Mission,
   OrderDetail,
   OrderListItem,
@@ -150,4 +155,28 @@ export const useTrack = (code: string, phone: string, enabled: boolean) =>
     queryFn: () => api<Tracking>('/orders/track', { method: 'POST', body: { code, phone }, auth: false }),
     enabled,
     retry: false,
+  });
+
+// ── inventory & reports ──
+
+export const useStock = (branchId: string | undefined) =>
+  useQuery({
+    queryKey: ['inventory', 'stock', branchId],
+    queryFn: () => api<StockView>('/inventory/stock', { query: { branchId } }),
+    enabled: !!branchId,
+  });
+
+export const useLedger = (branchId: string | undefined, f: { from: string; to: string; type?: LedgerType }) =>
+  useQuery({
+    queryKey: ['inventory', 'ledger', branchId, f],
+    queryFn: () => api<LedgerRow[]>('/inventory/movements', { query: { branchId, ...f } }),
+    enabled: !!branchId,
+    placeholderData: keepPreviousData,
+  });
+
+export const useSalesReport = (f: { from: string; to: string; branchId?: string; groupBy: SalesGroup }) =>
+  useQuery({
+    queryKey: ['reports', 'sales', f],
+    queryFn: () => api<SalesReport>('/reports/sales', { query: f }),
+    placeholderData: keepPreviousData,
   });
