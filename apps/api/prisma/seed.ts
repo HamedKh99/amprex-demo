@@ -5,6 +5,7 @@
  * slot and one settlement mismatch.
  *   pnpm db:seed
  */
+import { toPersianDigits } from '@amprex/shared';
 import { config } from 'dotenv';
 import bcrypt from 'bcryptjs';
 import { PrismaPg } from '@prisma/adapter-pg';
@@ -348,7 +349,7 @@ async function main() {
         slotId: slot.id,
         scheduledDate,
         district,
-        address: `تهران، منطقه ${district}، ${pick(STREETS)}، کوچه ${int(1, 40)}، پلاک ${int(1, 120)}`,
+        address: `${pick(STREETS)}، کوچه ${toPersianDigits(int(1, 40))}، پلاک ${toPersianDigits(int(1, 120))}`,
         installLocation: weighted(LOCATIONS).value,
         branchNote,
         estimatedCoreAh: estimate.estimatedCoreAh,
