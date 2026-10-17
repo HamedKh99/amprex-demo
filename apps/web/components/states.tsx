@@ -23,11 +23,11 @@ export function EmptyState({
 }) {
   return (
     <div className={cn('flex flex-col items-center gap-3 px-6 py-12 text-center', className)}>
-      <span className="flex size-14 items-center justify-center rounded-full bg-muted text-slate-600">
+      <span className="flex size-[52px] items-center justify-center rounded-card bg-muted text-muted-foreground">
         <Icon className="size-6" aria-hidden />
       </span>
-      <h3 className="m-0 text-base font-bold">{title}</h3>
-      {description && <p className="m-0 max-w-sm text-sm leading-7 text-muted-foreground">{description}</p>}
+      <h3 className="m-0 text-base font-extrabold">{title}</h3>
+      {description && <p className="m-0 max-w-sm text-[13px] leading-7 text-muted-foreground">{description}</p>}
       {children && <div className="mt-1 flex flex-wrap justify-center gap-2">{children}</div>}
     </div>
   );
@@ -56,11 +56,11 @@ export function ErrorState({
   const network = !e || e.status === 0 || e.status >= 500;
   return (
     <div role="alert" className={cn('flex flex-col items-center gap-3 px-6 py-12 text-center', className)}>
-      <span className="flex size-14 items-center justify-center rounded-full bg-destructive-muted text-destructive">
+      <span className="flex size-[52px] items-center justify-center rounded-card bg-destructive-muted text-destructive">
         <WifiOff className="size-6" aria-hidden />
       </span>
-      <h3 className="m-0 text-base font-bold">{title}</h3>
-      <p className="m-0 max-w-sm text-sm leading-7 text-muted-foreground">
+      <h3 className="m-0 text-base font-extrabold">{title}</h3>
+      <p className="m-0 max-w-sm text-[13px] leading-7 text-muted-foreground">
         {network ? (description ?? 'ارتباط با سرور برقرار نشد.') : e!.message}
       </p>
       {onRetry && (

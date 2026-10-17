@@ -297,7 +297,7 @@ function History({ order: o }: { order: OrderDetail }) {
 
   return (
     <Panel title="تاریخچه تغییرات" aside={<span className="text-xs text-subtle-foreground">{faNumber(rows.length)} رویداد</span>} flush>
-      <div className="overflow-x-auto">
+      <div className="relative overflow-x-auto">
         <table className="w-full min-w-[640px] border-collapse text-[13px]">
           <thead>
             <tr className="bg-background text-subtle-foreground">

@@ -110,3 +110,10 @@ export function parseFaInt(input: string): number | null {
   const digits = input.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/[^\d]/g, '');
   return digits ? Number(digits) : null;
 }
+
+/** "YYYY-MM-DD" ± days (calendar arithmetic on the date string). */
+export function addDaysIso(day: string, days: number) {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
