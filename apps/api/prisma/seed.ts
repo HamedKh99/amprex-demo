@@ -1,20 +1,28 @@
 /**
  * Demo seed: wipes all data and recreates it deterministically (fixed PRNG seed).
- * Order timestamps are relative to "now", so the dashboard always looks recent.
+ * Timestamps are relative to "now", so the dashboard always has a realistic "today":
+ * jobs finished this morning, technicians on the road, an unassigned order in an upcoming
+ * slot and one settlement mismatch.
  *   pnpm db:seed
  */
 import { config } from 'dotenv';
 import bcrypt from 'bcryptjs';
 import { PrismaPg } from '@prisma/adapter-pg';
 import {
-  type CoreCondition,
+  type Battery,
+  type InstallLocation,
   type OrderStatus,
   type PaymentMethod,
   PrismaClient,
+  type ServiceSlot,
+  type VehicleModel,
 } from '../src/generated/prisma/client.js';
 import { BUSINESS_RULES } from '../src/config/business-rules.js';
+import { orderCode } from '../src/orders/order-code.js';
+import { breakdown, coreScrapValue, quote } from '../src/pricing/pricing.js';
 import {
   BATTERIES,
+  BRANCH_NOTES,
   BRANCHES,
   type BranchCode,
   CHANNELS,
@@ -77,28 +85,43 @@ function atTehran(date: Date, hhmm: string): number {
 
 // ───────────── order plan ─────────────
 
-const PATH: OrderStatus[] = ['CREATED', 'ASSIGNED', 'EN_ROUTE', 'ON_SITE', 'INSTALLED', 'PAID', 'COMPLETED'];
-const ACTIVE: OrderStatus[] = ['CREATED', 'ASSIGNED', 'EN_ROUTE', 'ON_SITE']; // hold a reservation
-const ISSUED: OrderStatus[] = ['INSTALLED', 'PAID', 'COMPLETED']; // battery left the shelf
+const PATH: OrderStatus[] = ['CREATED', 'ASSIGNED', 'ACCEPTED', 'EN_ROUTE', 'ON_SITE', 'INSTALLING', 'COMPLETED'];
+const HOLDS_STOCK: OrderStatus[] = ['CREATED', 'ASSIGNED', 'ACCEPTED', 'EN_ROUTE', 'ON_SITE', 'INSTALLING'];
 
-/** Final status of each of the 40 seeded orders. */
-const FINAL_STATUSES: OrderStatus[] = [
-  ...Array<OrderStatus>(26).fill('COMPLETED'),
-  ...Array<OrderStatus>(4).fill('CANCELLED'),
-  'PAID', 'PAID',
-  'INSTALLED', 'INSTALLED',
-  'ON_SITE', 'EN_ROUTE',
-  'ASSIGNED', 'ASSIGNED',
-  'CREATED', 'CREATED',
+/**
+ * 40 orders. `when`: past = 2–30 days ago; today = scheduled today; tomorrow = booked ahead.
+ * Today's in-flight jobs in WEST go to the demo technician so /tech has a full day.
+ */
+const PLAN: { status: OrderStatus; when: 'past' | 'today' | 'tomorrow'; branch?: BranchCode }[] = [
+  ...Array.from({ length: 22 }, () => ({ status: 'COMPLETED' as const, when: 'past' as const })),
+  ...Array.from({ length: 3 }, () => ({ status: 'CANCELLED' as const, when: 'past' as const })),
+  { status: 'COMPLETED', when: 'today', branch: 'WEST' },
+  { status: 'COMPLETED', when: 'today', branch: 'WEST' },
+  { status: 'COMPLETED', when: 'today', branch: 'EAST' },
+  { status: 'COMPLETED', when: 'today', branch: 'EAST' },
+  { status: 'CANCELLED', when: 'today', branch: 'EAST' },
+  { status: 'INSTALLING', when: 'today', branch: 'EAST' },
+  { status: 'ON_SITE', when: 'today', branch: 'WEST' },
+  { status: 'EN_ROUTE', when: 'today', branch: 'WEST' },
+  { status: 'EN_ROUTE', when: 'today', branch: 'EAST' },
+  { status: 'ACCEPTED', when: 'today', branch: 'WEST' },
+  { status: 'ASSIGNED', when: 'today', branch: 'WEST' },
+  { status: 'CREATED', when: 'today', branch: 'WEST' },
+  { status: 'CREATED', when: 'today', branch: 'EAST' },
+  { status: 'ASSIGNED', when: 'tomorrow', branch: 'EAST' },
+  { status: 'CREATED', when: 'tomorrow', branch: 'WEST' },
 ];
 
 const PAYMENT_METHODS: { value: PaymentMethod; weight: number }[] = [
-  { value: 'CARD_POS', weight: 55 },
+  { value: 'CARD_POS', weight: 60 },
   { value: 'CARD_TO_CARD', weight: 20 },
-  { value: 'CASH', weight: 15 },
-  { value: 'ONLINE', weight: 10 },
+  { value: 'CASH', weight: 20 },
 ];
-
+const LOCATIONS: { value: InstallLocation; weight: number }[] = [
+  { value: 'PARKING', weight: 60 },
+  { value: 'STREET', weight: 25 },
+  { value: 'WORKPLACE', weight: 15 },
+];
 const CANCEL_REASONS = ['انصراف مشتری', 'عدم پاسخگویی مشتری', 'خودرو در محل نبود', 'خرید از جای دیگر'];
 
 async function wipe() {
@@ -106,7 +129,6 @@ async function wipe() {
     TRUNCATE "Payment", "CoreReturn", "Mission", "OrderEvent", "StockMovement", "Order",
              "Customer", "Stock", "BatteryCompatibility", "Battery", "VehicleModel",
              "Technician", "User", "Branch", "Channel", "ServiceSlot" CASCADE`);
-  // Order numbers start at 1001.
   await prisma.$executeRawUnsafe(`SELECT setval('"Order_number_seq"', 1000, true)`);
 }
 
@@ -135,42 +157,50 @@ async function main() {
     users.set(u.role, row.id);
   }
 
-  const techsByBranch = new Map<BranchCode, { id: string; userId: string | null }[]>();
+  const techsByBranch = new Map<BranchCode, { id: string; userId: string | null; districts: number[] }[]>();
   for (const t of TECHNICIANS) {
     const userId = t.demoUser ? users.get('TECHNICIAN')! : null;
     const row = await prisma.technician.create({
-      data: { branchId: branches.get(t.branch)!, fullName: t.fullName, phone: t.phone, userId },
+      data: {
+        branchId: branches.get(t.branch)!,
+        fullName: t.fullName,
+        phone: t.phone,
+        serviceDistricts: t.serviceDistricts,
+        dailyCapacity: t.dailyCapacity,
+        userId,
+      },
     });
-    techsByBranch.set(t.branch, [...(techsByBranch.get(t.branch) ?? []), { id: row.id, userId }]);
+    const list = techsByBranch.get(t.branch) ?? [];
+    list.push({ id: row.id, userId, districts: t.serviceDistricts });
+    techsByBranch.set(t.branch, list);
   }
 
   // ── catalogue ──
-  const vehicles = await Promise.all(
-    VEHICLE_MODELS.map(({ size: _size, ...v }, i) =>
-      prisma.vehicleModel.create({ data: { ...v, sortOrder: i } }).then((row) => ({ ...row, size: _size })),
-    ),
-  );
-  const batteries = await Promise.all(
-    BATTERIES.map(({ size, recommended, ...b }) =>
-      prisma.battery.create({ data: b }).then((row) => ({ ...row, size, recommended: !!recommended })),
-    ),
-  );
+  const vehicles: VehicleModel[] = [];
+  for (const [i, v] of VEHICLE_MODELS.entries()) {
+    vehicles.push(await prisma.vehicleModel.create({ data: { ...v, sortOrder: i } }));
+  }
+  const batteries: Battery[] = [];
+  for (const b of BATTERIES) batteries.push(await prisma.battery.create({ data: b }));
   await prisma.batteryCompatibility.createMany({
     data: vehicles.flatMap((v) =>
       batteries
-        .filter((b) => b.size === v.size)
-        .map((b) => ({ vehicleModelId: v.id, batteryId: b.id, isRecommended: b.recommended })),
+        .filter((b) => b.groupSize === v.groupSize)
+        .map((b) => ({ vehicleModelId: v.id, batteryId: b.id, matchesFactorySpec: b.capacityAh === v.factoryAh })),
     ),
   });
+  const fitting = (vehicleId: string) => {
+    const v = vehicles.find((x) => x.id === vehicleId)!;
+    return batteries.filter((b) => b.groupSize === v.groupSize);
+  };
+  const sellableVehicles = vehicles.filter((v) => fitting(v.id).length > 0);
 
-  const channels = await Promise.all(
-    CHANNELS.map(({ weight, ...c }, i) =>
-      prisma.channel.create({ data: { ...c, sortOrder: i } }).then((row) => ({ ...row, weight })),
-    ),
-  );
-  const slots = await Promise.all(
-    SLOTS.map((s, i) => prisma.serviceSlot.create({ data: { ...s, sortOrder: i } })),
-  );
+  const channels = [];
+  for (const [i, { weight, ...c }] of CHANNELS.entries()) {
+    channels.push({ ...(await prisma.channel.create({ data: { ...c, sortOrder: i } })), weight });
+  }
+  const slots: ServiceSlot[] = [];
+  for (const [i, s] of SLOTS.entries()) slots.push(await prisma.serviceSlot.create({ data: { ...s, sortOrder: i } }));
 
   // ── customers ──
   const customers = [];
@@ -188,6 +218,13 @@ async function main() {
   }
 
   // ── orders ──
+  const today = tehranDate(NOW);
+  const slotStart = (date: Date, s: (typeof slots)[number]) => atTehran(date, s.startTime);
+  const slotEnd = (date: Date, s: (typeof slots)[number]) => atTehran(date, s.endTime);
+  const finishedToday = slots.filter((s) => slotEnd(today, s) <= NOW);
+  const startedToday = slots.filter((s) => slotStart(today, s) <= NOW);
+  const upcomingToday = slots.filter((s) => slotStart(today, s) > NOW);
+
   const reserved = new Map<string, number>(); // `${branchId}:${batteryId}` → count
   const issued = new Map<string, number>();
   const bump = (m: Map<string, number>, k: string) => m.set(k, (m.get(k) ?? 0) + 1);
@@ -195,98 +232,112 @@ async function main() {
     branchId: string; batteryId: string; type: 'RECEIPT' | 'RESERVE' | 'RELEASE' | 'ISSUE';
     quantity: number; orderId?: string; actorUserId?: string | null; createdAt: Date; note?: string;
   }[] = [];
+  let discrepancyPlanted = false;
+  let demoTechFinishedToday = 0;
 
-  // Shuffle so statuses are spread over branches/channels, then sort by creation time.
-  const plan = FINAL_STATUSES.map((status) => ({ status, key: rand() })).sort((a, b) => a.key - b.key);
-
-  const orderSpecs = plan.map(({ status }) => {
-    const branchCode: BranchCode = chance(0.55) ? 'WEST' : 'EAST';
-    const isActive = ACTIVE.includes(status) || status === 'INSTALLED' || status === 'PAID';
-    // Terminal orders: created 2–30 days ago. In-flight: created within the last day.
-    const createdAt = isActive ? NOW - int(2 * HOUR, 20 * HOUR) : NOW - int(2 * DAY, 30 * DAY);
-    return { status, branchCode, createdAt };
-  });
-  orderSpecs.sort((a, b) => a.createdAt - b.createdAt);
-
-  for (const spec of orderSpecs) {
-    const { status, branchCode } = spec;
+  for (const plan of PLAN) {
+    const { status } = plan;
+    const branchCode: BranchCode = plan.branch ?? (chance(0.55) ? 'WEST' : 'EAST');
     const branch = BRANCHES.find((b) => b.code === branchCode)!;
     const branchId = branches.get(branchCode)!;
-    const vehicle = pick(vehicles);
-    const compatible = batteries.filter((b) => b.size === vehicle.size);
-    // Prefer the recommended battery ~60% of the time.
-    const battery = chance(0.6) ? compatible.find((b) => b.recommended)! : pick(compatible);
+    const vehicle = pick(sellableVehicles);
+    const fits = fitting(vehicle.id);
+    const battery = chance(0.6) ? (fits.find((b) => b.capacityAh === vehicle.factoryAh) ?? pick(fits)) : pick(fits);
     const channel = weighted(channels);
-    const slot = pick(slots);
     const customer = pick(customers);
-    const district = pick(branch.serviceDistricts);
     const operatorId = branchCode === 'WEST' ? users.get('OPERATOR')! : users.get('SUPER_ADMIN')!;
     const managerId = branchCode === 'WEST' ? users.get('BRANCH_MANAGER')! : users.get('SUPER_ADMIN')!;
-    const tech =
-      ACTIVE.includes(status) && branchCode === 'WEST'
-        ? techsByBranch.get('WEST')!.find((t) => t.userId)! // demo technician gets the live missions
-        : pick(techsByBranch.get(branchCode)!);
+    const team = techsByBranch.get(branchCode)!;
+    // Demo technician: today's live WEST jobs plus one finished this morning (5 of 6, like the design).
+    const liveWest =
+      plan.when === 'today' &&
+      branchCode === 'WEST' &&
+      status !== 'CREATED' &&
+      (status !== 'COMPLETED' || demoTechFinishedToday++ === 0);
+    const tech = liveWest ? team.find((t) => t.userId)! : pick(team);
+    const district = liveWest ? pick(tech.districts) : pick(branch.serviceDistricts);
 
-    // Price (same formula the API will use).
-    const coreReturnExpected = chance(0.85);
-    const installFee = BUSINESS_RULES.installFeeRial;
-    const estimatedCredit = coreReturnExpected ? battery.coreCreditRial : 0n;
+    // Schedule and timestamps.
+    let scheduledDate: Date;
+    let slot: (typeof slots)[number];
+    let createdAt: number;
+    if (plan.when === 'past') {
+      createdAt = NOW - int(2 * DAY, 30 * DAY);
+      scheduledDate = tehranDate(createdAt + DAY);
+      slot = pick(slots);
+    } else if (plan.when === 'tomorrow') {
+      createdAt = NOW - int(1 * HOUR, 6 * HOUR);
+      scheduledDate = tehranDate(NOW + DAY);
+      slot = pick(slots);
+    } else {
+      createdAt = NOW - int(18 * HOUR, 30 * HOUR);
+      scheduledDate = today;
+      const done = status === 'COMPLETED' || status === 'CANCELLED';
+      // Finished jobs sit in slots that are over; live ones in a started slot; CREATED in an upcoming one.
+      slot = done
+        ? (pick(finishedToday.length ? finishedToday : slots.slice(0, 1)))
+        : status === 'CREATED'
+          ? (upcomingToday[0] ?? slots.at(-1)!)
+          : (startedToday.at(-1) ?? slots[0]!);
+      if (done && !finishedToday.length) scheduledDate = tehranDate(NOW - DAY); // early-morning seed run
+    }
 
-    // Status path and timestamps.
-    const cancelAfter: OrderStatus = chance(0.5) ? 'CREATED' : 'ASSIGNED';
     const steps: OrderStatus[] =
       status === 'CANCELLED'
-        ? [...PATH.slice(0, PATH.indexOf(cancelAfter) + 1), 'CANCELLED']
+        ? [...PATH.slice(0, PATH.indexOf(chance(0.5) ? 'CREATED' : 'ASSIGNED') + 1), 'CANCELLED']
         : PATH.slice(0, PATH.indexOf(status) + 1);
 
-    let scheduledDate: Date;
-    const times: number[] = [spec.createdAt];
-    if (ACTIVE.includes(status) || status === 'INSTALLED' || status === 'PAID') {
-      // In-flight: CREATED is booked for tomorrow; others are today's jobs, events end shortly before now.
-      scheduledDate = tehranDate(status === 'CREATED' ? NOW + DAY : NOW);
-      const n = steps.length - 1;
-      for (let i = 1; i <= n; i++) times.push(spec.createdAt + ((NOW - int(5, 25) * MIN - spec.createdAt) * i) / n);
-    } else {
-      scheduledDate = tehranDate(spec.createdAt + DAY);
-      const start = atTehran(scheduledDate, slot.startTime);
-      const offsets: Partial<Record<OrderStatus, number>> = {
-        ASSIGNED: spec.createdAt + int(20, 180) * MIN,
-        EN_ROUTE: start + int(0, 30) * MIN,
-        ON_SITE: start + int(40, 80) * MIN,
-        INSTALLED: start + int(90, 120) * MIN,
-        PAID: start + int(121, 130) * MIN,
-        COMPLETED: start + int(3, 6) * HOUR,
-        CANCELLED: spec.createdAt + int(1, 12) * HOUR,
+    const times: number[] = [createdAt];
+    const start = slotStart(scheduledDate, slot);
+    if (status === 'COMPLETED' || (status === 'CANCELLED' && plan.when === 'past')) {
+      const at: Partial<Record<OrderStatus, number>> = {
+        ASSIGNED: createdAt + int(20, 180) * MIN,
+        ACCEPTED: createdAt + int(181, 300) * MIN,
+        EN_ROUTE: start + int(0, 20) * MIN,
+        ON_SITE: start + int(35, 70) * MIN,
+        INSTALLING: start + int(75, 85) * MIN,
+        COMPLETED: start + int(100, 130) * MIN,
+        CANCELLED: createdAt + int(1, 10) * HOUR,
       };
-      for (const s of steps.slice(1)) times.push(offsets[s]!);
+      for (const s of steps.slice(1)) times.push(Math.min(at[s]!, NOW - 5 * MIN));
+    } else {
+      // In-flight (or cancelled today): spread events between creation and a few minutes ago.
+      const n = steps.length - 1;
+      const end = NOW - int(5, 20) * MIN;
+      for (let i = 1; i <= n; i++) times.push(createdAt + ((end - createdAt) * i) / n);
     }
     const at = (s: OrderStatus) => new Date(times[steps.indexOf(s)]!);
     const reached = (s: OrderStatus) => steps.includes(s);
 
-    // Core return outcome (recorded at INSTALLED).
-    let coreCondition: CoreCondition | null = null;
-    let credit = estimatedCredit;
-    if (reached('INSTALLED')) {
-      coreCondition = !coreReturnExpected
-        ? 'NOT_RETURNED'
-        : weighted([
-            { v: 'INTACT' as const, weight: 85 },
-            { v: 'DAMAGED' as const, weight: 10 },
-            { v: 'NOT_RETURNED' as const, weight: 5 },
-          ]).v;
-      credit = (battery.coreCreditRial * BigInt(BUSINESS_RULES.coreCreditPercent[coreCondition])) / 100n;
+    // Price: estimate at order time, actual at completion.
+    const withCore = chance(0.9);
+    const estimate = quote(battery, withCore);
+    let price = { ...estimate };
+    let coreAh: number | null = estimate.estimatedCoreAh;
+    if (status === 'COMPLETED') {
+      const returned = withCore && chance(0.9);
+      coreAh = returned
+        ? Math.min(BUSINESS_RULES.coreAhMax, Math.max(BUSINESS_RULES.coreAhMin, battery.capacityAh + pick([-15, -10, -5, 0, 0, 0, 5])))
+        : null;
+      price = { ...breakdown(battery.priceRial, BUSINESS_RULES.installFeeRial, coreAh), estimatedCoreAh: estimate.estimatedCoreAh };
     }
-    const total = battery.priceRial + installFee - credit;
+    // One recent settlement mismatch for the dashboard alert.
+    const plantMismatch = status === 'COMPLETED' && plan.when === 'today' && !discrepancyPlanted;
+    if (plantMismatch) discrepancyPlanted = true;
+    const received = plantMismatch ? price.totalRial - 2_250_000n : price.totalRial;
 
     const actorFor = (s: OrderStatus): string | null => {
       if (s === 'CREATED') return channel.code === 'WEBSITE' ? null : operatorId;
-      if (['EN_ROUTE', 'ON_SITE', 'INSTALLED', 'PAID'].includes(s)) return tech.userId;
-      if (s === 'COMPLETED') return managerId;
+      if (['ACCEPTED', 'EN_ROUTE', 'ON_SITE', 'INSTALLING', 'COMPLETED'].includes(s)) return tech.userId;
+      if (s === 'CANCELLED') return managerId;
       return operatorId;
     };
+    const branchNote = reached('ASSIGNED') && chance(0.4) ? pick(BRANCH_NOTES) : null;
+    const createdDate = new Date(createdAt);
 
     const order = await prisma.order.create({
       data: {
+        code: orderCode(createdDate, (max) => Math.floor(rand() * max)),
         idempotencyKey: `seed-${crypto.randomUUID()}`,
         status,
         customerId: customer.id,
@@ -298,73 +349,87 @@ async function main() {
         scheduledDate,
         district,
         address: `تهران، منطقه ${district}، ${pick(STREETS)}، کوچه ${int(1, 40)}، پلاک ${int(1, 120)}`,
-        coreReturnExpected,
-        batteryPriceRial: battery.priceRial,
-        installFeeRial: installFee,
-        coreCreditRial: credit,
-        totalRial: total,
+        installLocation: weighted(LOCATIONS).value,
+        branchNote,
+        estimatedCoreAh: estimate.estimatedCoreAh,
+        batteryPriceRial: price.batteryPriceRial,
+        installFeeRial: price.installFeeRial,
+        coreCreditRial: price.coreCreditRial,
+        totalRial: price.totalRial,
+        batteryCostRial: battery.costRial,
         createdById: actorFor('CREATED'),
         cancelReason: status === 'CANCELLED' ? pick(CANCEL_REASONS) : null,
         cancelledAt: status === 'CANCELLED' ? at('CANCELLED') : null,
         completedAt: status === 'COMPLETED' ? at('COMPLETED') : null,
-        createdAt: at('CREATED'),
+        createdAt: createdDate,
         events: {
-          create: steps.map((s, i) => ({
-            fromStatus: i === 0 ? null : steps[i - 1]!,
-            toStatus: s,
-            actorUserId: actorFor(s),
-            createdAt: at(s),
-            data: s === 'ASSIGNED' ? { technicianId: tech.id } : undefined,
-            note: s === 'CANCELLED' ? 'لغو توسط اپراتور' : undefined,
-          })),
+          create: [
+            ...steps.map((s, i) => ({
+              kind: 'STATUS' as const,
+              fromStatus: i === 0 ? null : steps[i - 1]!,
+              toStatus: s,
+              actorUserId: actorFor(s),
+              createdAt: at(s),
+              data: s === 'ASSIGNED' ? { technicianId: tech.id } : undefined,
+              note: s === 'CANCELLED' ? 'لغو توسط شعبه' : undefined,
+            })),
+            ...(branchNote
+              ? [{ kind: 'NOTE' as const, actorUserId: managerId, createdAt: at('ASSIGNED'), data: { from: null, to: branchNote } }]
+              : []),
+          ],
         },
         mission: reached('ASSIGNED')
           ? {
               create: {
                 technicianId: tech.id,
                 assignedAt: at('ASSIGNED'),
+                acceptedAt: reached('ACCEPTED') ? at('ACCEPTED') : null,
                 departedAt: reached('EN_ROUTE') ? at('EN_ROUTE') : null,
                 arrivedAt: reached('ON_SITE') ? at('ON_SITE') : null,
-                installedAt: reached('INSTALLED') ? at('INSTALLED') : null,
-                installedSerial: reached('INSTALLED') ? `${battery.sku}-${int(100000, 999999)}` : null,
+                startedAt: reached('INSTALLING') ? at('INSTALLING') : null,
+                installedAt: reached('COMPLETED') ? at('COMPLETED') : null,
+                installedSerial: reached('COMPLETED') ? `${battery.sku.replace('-', '')}-${int(1000, 9999)}-${int(100000, 999999)}` : null,
               },
             }
           : undefined,
-        coreReturn: coreCondition
-          ? {
-              create: {
-                condition: coreCondition,
-                oldBatteryNote: coreCondition === 'NOT_RETURNED' ? null : `${pick(['صبا', 'نیرو', 'اطلس', 'سپاهان'])} ${pick([45, 50, 55, 60, 66, 70])} آمپر`,
-                creditAppliedRial: credit,
-                recordedAt: at('INSTALLED'),
-              },
-            }
-          : undefined,
-        payments: reached('PAID')
-          ? {
-              create: {
-                amountRial: total,
-                method: weighted(PAYMENT_METHODS.map((m) => ({ ...m }))).value,
-                status: 'PAID',
-                reference: String(int(100000000, 999999999)),
-                receivedById: tech.userId,
-                paidAt: at('PAID'),
-                createdAt: at('PAID'),
-              },
-            }
-          : undefined,
+        coreReturn:
+          status === 'COMPLETED'
+            ? {
+                create: {
+                  returned: coreAh !== null,
+                  ampereHours: coreAh,
+                  creditAppliedRial: price.coreCreditRial,
+                  scrapValueRial: coreScrapValue(coreAh),
+                  recordedAt: at('COMPLETED'),
+                },
+              }
+            : undefined,
+        payments:
+          status === 'COMPLETED'
+            ? {
+                create: {
+                  amountRial: received,
+                  expectedRial: price.totalRial,
+                  method: weighted(PAYMENT_METHODS).value,
+                  status: 'PAID',
+                  reference: String(int(100000, 999999)),
+                  receivedById: tech.userId,
+                  paidAt: at('COMPLETED'),
+                  createdAt: at('COMPLETED'),
+                },
+              }
+            : undefined,
       },
     });
 
     const key = `${branchId}:${battery.id}`;
-    const actor = actorFor('CREATED');
-    movements.push({ branchId, batteryId: battery.id, type: 'RESERVE', quantity: 1, orderId: order.id, actorUserId: actor, createdAt: at('CREATED') });
+    movements.push({ branchId, batteryId: battery.id, type: 'RESERVE', quantity: 1, orderId: order.id, actorUserId: actorFor('CREATED'), createdAt: at('CREATED') });
     if (status === 'CANCELLED') {
-      movements.push({ branchId, batteryId: battery.id, type: 'RELEASE', quantity: -1, orderId: order.id, actorUserId: operatorId, createdAt: at('CANCELLED') });
-    } else if (ISSUED.includes(status)) {
+      movements.push({ branchId, batteryId: battery.id, type: 'RELEASE', quantity: -1, orderId: order.id, actorUserId: managerId, createdAt: at('CANCELLED') });
+    } else if (status === 'COMPLETED') {
       bump(issued, key);
-      movements.push({ branchId, batteryId: battery.id, type: 'ISSUE', quantity: -1, orderId: order.id, actorUserId: tech.userId, createdAt: at('INSTALLED') });
-    } else {
+      movements.push({ branchId, batteryId: battery.id, type: 'ISSUE', quantity: -1, orderId: order.id, actorUserId: tech.userId, createdAt: at('COMPLETED') });
+    } else if (HOLDS_STOCK.includes(status)) {
       bump(reserved, key);
     }
   }

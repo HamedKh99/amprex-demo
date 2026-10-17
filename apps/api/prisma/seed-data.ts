@@ -23,54 +23,56 @@ export const BRANCHES = [
 
 export type BranchCode = (typeof BRANCHES)[number]['code'];
 
-/** S = small (50–55Ah), M = medium (60–66Ah), L = large (70–74Ah). */
-type SizeClass = 'S' | 'M' | 'L';
+/** Case group: batteries fit vehicles of the same group (L1 small, L2 medium, L3 large). */
+type Group = 'L1' | 'L2' | 'L3' | 'YTX9' | 'YB7';
 
 export const VEHICLE_MODELS: ReadonlyArray<{
   code: string;
+  type: 'CAR' | 'MOTORCYCLE';
   make: string;
+  brandFa: string;
   model: string;
   nameFa: string;
+  factoryAh: number;
+  groupSize: Group;
   yearFrom: number;
   yearTo: number | null;
-  size: SizeClass;
 }> = [
-  { code: 'PRIDE_131', make: 'Saipa', model: 'Pride 131', nameFa: 'پراید ۱۳۱', yearFrom: 2010, yearTo: 2020, size: 'S' },
-  { code: 'TIBA', make: 'Saipa', model: 'Tiba', nameFa: 'تیبا', yearFrom: 2009, yearTo: null, size: 'S' },
-  { code: 'QUICK', make: 'Saipa', model: 'Quick', nameFa: 'کوییک', yearFrom: 2017, yearTo: null, size: 'S' },
-  { code: 'SHAHIN', make: 'Saipa', model: 'Shahin', nameFa: 'شاهین', yearFrom: 2020, yearTo: null, size: 'M' },
-  { code: 'P206', make: 'Peugeot', model: '206', nameFa: 'پژو ۲۰۶', yearFrom: 2001, yearTo: null, size: 'M' },
-  { code: 'P207', make: 'Peugeot', model: '207i', nameFa: 'پژو ۲۰۷', yearFrom: 2011, yearTo: null, size: 'M' },
-  { code: 'P405', make: 'Peugeot', model: '405', nameFa: 'پژو ۴۰۵', yearFrom: 1991, yearTo: 2020, size: 'M' },
-  { code: 'PARS', make: 'IKCO', model: 'Pars', nameFa: 'پژو پارس', yearFrom: 1999, yearTo: null, size: 'M' },
-  { code: 'SAMAND', make: 'IKCO', model: 'Samand', nameFa: 'سمند', yearFrom: 2002, yearTo: null, size: 'M' },
-  { code: 'DENA', make: 'IKCO', model: 'Dena', nameFa: 'دنا', yearFrom: 2014, yearTo: null, size: 'M' },
-  { code: 'L90', make: 'Renault', model: 'Tondar 90', nameFa: 'رنو تندر ۹۰', yearFrom: 2007, yearTo: 2018, size: 'M' },
-  { code: 'CERATO', make: 'Kia', model: 'Cerato', nameFa: 'کیا سراتو', yearFrom: 2014, yearTo: null, size: 'L' },
+  { code: 'P206', type: 'CAR', make: 'IKCO', brandFa: 'ایران‌خودرو', model: '206 Type 2', nameFa: 'پژو ۲۰۶ تیپ ۲', factoryAh: 60, groupSize: 'L2', yearFrom: 2001, yearTo: null },
+  { code: 'P405', type: 'CAR', make: 'IKCO', brandFa: 'ایران‌خودرو', model: '405', nameFa: 'پژو ۴۰۵', factoryAh: 60, groupSize: 'L2', yearFrom: 1991, yearTo: 2020 },
+  { code: 'PARS', type: 'CAR', make: 'IKCO', brandFa: 'ایران‌خودرو', model: 'Pars', nameFa: 'پژو پارس', factoryAh: 60, groupSize: 'L2', yearFrom: 1999, yearTo: null },
+  { code: 'SAMAND', type: 'CAR', make: 'IKCO', brandFa: 'ایران‌خودرو', model: 'Samand LX', nameFa: 'سمند LX', factoryAh: 60, groupSize: 'L2', yearFrom: 2002, yearTo: null },
+  { code: 'DENA', type: 'CAR', make: 'IKCO', brandFa: 'ایران‌خودرو', model: 'Dena Plus', nameFa: 'دنا پلاس', factoryAh: 66, groupSize: 'L2', yearFrom: 2014, yearTo: null },
+  { code: 'TIBA', type: 'CAR', make: 'Saipa', brandFa: 'سایپا', model: 'Tiba', nameFa: 'تیبا', factoryAh: 50, groupSize: 'L1', yearFrom: 2009, yearTo: null },
+  { code: 'QUICK', type: 'CAR', make: 'Saipa', brandFa: 'سایپا', model: 'Quick', nameFa: 'کوییک', factoryAh: 50, groupSize: 'L1', yearFrom: 2017, yearTo: null },
+  { code: 'SHAHIN', type: 'CAR', make: 'Saipa', brandFa: 'سایپا', model: 'Shahin', nameFa: 'سایپا شاهین', factoryAh: 60, groupSize: 'L2', yearFrom: 2020, yearTo: null },
+  { code: 'L90', type: 'CAR', make: 'Renault', brandFa: 'رنو', model: 'Tondar 90', nameFa: 'رنو تندر ۹۰', factoryAh: 60, groupSize: 'L2', yearFrom: 2007, yearTo: 2018 },
+  { code: 'CERATO', type: 'CAR', make: 'Kia', brandFa: 'کیا', model: 'Cerato', nameFa: 'کیا سراتو', factoryAh: 74, groupSize: 'L3', yearFrom: 2014, yearTo: null },
+  // Motorcycles: no motorcycle batteries are stocked yet, which shows the «باتری سازگاری موجود نیست» state.
+  { code: 'CBR250', type: 'MOTORCYCLE', make: 'Honda', brandFa: 'هوندا', model: 'CBR 250', nameFa: 'هوندا CBR ۲۵۰', factoryAh: 9, groupSize: 'YTX9', yearFrom: 2011, yearTo: null },
+  { code: 'YBR125', type: 'MOTORCYCLE', make: 'Yamaha', brandFa: 'یاماها', model: 'YBR 125', nameFa: 'یاماها YBR ۱۲۵', factoryAh: 7, groupSize: 'YB7', yearFrom: 2005, yearTo: null },
 ];
 
 export const BATTERIES: ReadonlyArray<{
   sku: string;
   brand: string;
+  series: string;
   nameFa: string;
   capacityAh: number;
   coldCrankingA: number;
-  groupSize: string;
+  groupSize: Group;
   warrantyMonths: number;
   priceRial: bigint;
-  coreCreditRial: bigint;
-  size: SizeClass;
-  /** Shown first for this size class. */
-  recommended?: boolean;
+  costRial: bigint;
 }> = [
-  { sku: 'SAB-50', brand: 'صبا باتری', nameFa: 'صبا باتری ۵۰ آمپر', capacityAh: 50, coldCrankingA: 420, groupSize: 'L1', warrantyMonths: 12, priceRial: 48_000_000n, coreCreditRial: 8_000_000n, size: 'S', recommended: true },
-  { sku: 'NIR-55', brand: 'نیرو', nameFa: 'نیرو ۵۵ آمپر', capacityAh: 55, coldCrankingA: 450, groupSize: 'L1', warrantyMonths: 12, priceRial: 52_000_000n, coreCreditRial: 9_000_000n, size: 'S' },
-  { sku: 'SAB-60', brand: 'صبا باتری', nameFa: 'صبا باتری ۶۰ آمپر', capacityAh: 60, coldCrankingA: 510, groupSize: 'L2', warrantyMonths: 15, priceRial: 58_000_000n, coreCreditRial: 10_000_000n, size: 'M', recommended: true },
-  { sku: 'NIR-66', brand: 'نیرو', nameFa: 'نیرو ۶۶ آمپر', capacityAh: 66, coldCrankingA: 540, groupSize: 'L2', warrantyMonths: 15, priceRial: 64_000_000n, coreCreditRial: 11_000_000n, size: 'M' },
-  { sku: 'ATL-60', brand: 'اطلس BX', nameFa: 'اطلس BX ۶۰ آمپر', capacityAh: 60, coldCrankingA: 550, groupSize: 'L2', warrantyMonths: 18, priceRial: 85_000_000n, coreCreditRial: 10_000_000n, size: 'M' },
-  { sku: 'SAB-74', brand: 'صبا باتری', nameFa: 'صبا باتری ۷۴ آمپر', capacityAh: 74, coldCrankingA: 640, groupSize: 'L3', warrantyMonths: 15, priceRial: 72_000_000n, coreCreditRial: 12_000_000n, size: 'L' },
-  { sku: 'ATL-74', brand: 'اطلس BX', nameFa: 'اطلس BX ۷۴ آمپر', capacityAh: 74, coldCrankingA: 680, groupSize: 'L3', warrantyMonths: 18, priceRial: 98_000_000n, coreCreditRial: 12_000_000n, size: 'L', recommended: true },
-  { sku: 'VAR-70', brand: 'وارتا', nameFa: 'وارتا ۷۰ آمپر', capacityAh: 70, coldCrankingA: 640, groupSize: 'L3', warrantyMonths: 24, priceRial: 110_000_000n, coreCreditRial: 12_000_000n, size: 'L' },
+  { sku: 'SAB-50', brand: 'صبا باتری', series: 'SMF · سیلد', nameFa: 'صبا باتری ۵۰ آمپر', capacityAh: 50, coldCrankingA: 420, groupSize: 'L1', warrantyMonths: 12, priceRial: 42_000_000n, costRial: 30_500_000n },
+  { sku: 'NIR-55', brand: 'نیرو', series: 'اقتصادی', nameFa: 'نیرو ۵۵ آمپر', capacityAh: 55, coldCrankingA: 450, groupSize: 'L1', warrantyMonths: 12, priceRial: 41_000_000n, costRial: 30_000_000n },
+  { sku: 'SAB-60', brand: 'صبا باتری', series: 'SMF · سیلد', nameFa: 'صبا باتری ۶۰ آمپر', capacityAh: 60, coldCrankingA: 540, groupSize: 'L2', warrantyMonths: 18, priceRial: 48_500_000n, costRial: 35_500_000n },
+  { sku: 'NIR-66', brand: 'نیرو', series: 'سیلد', nameFa: 'نیرو ۶۶ آمپر', capacityAh: 66, coldCrankingA: 600, groupSize: 'L2', warrantyMonths: 18, priceRial: 54_000_000n, costRial: 39_500_000n },
+  { sku: 'ATL-60', brand: 'اطلس', series: 'BX · کره', nameFa: 'اطلس BX ۶۰ آمپر', capacityAh: 60, coldCrankingA: 550, groupSize: 'L2', warrantyMonths: 24, priceRial: 62_000_000n, costRial: 45_500_000n },
+  { sku: 'SAB-74', brand: 'صبا باتری', series: 'SMF · سیلد', nameFa: 'صبا باتری ۷۴ آمپر', capacityAh: 74, coldCrankingA: 640, groupSize: 'L3', warrantyMonths: 18, priceRial: 59_500_000n, costRial: 43_500_000n },
+  { sku: 'ATL-74', brand: 'اطلس', series: 'BX · کره', nameFa: 'اطلس BX ۷۴ آمپر', capacityAh: 74, coldCrankingA: 680, groupSize: 'L3', warrantyMonths: 24, priceRial: 72_000_000n, costRial: 52_500_000n },
+  { sku: 'VAR-70', brand: 'وارتا', series: 'Blue Dynamic · آلمان', nameFa: 'وارتا ۷۰ آمپر', capacityAh: 70, coldCrankingA: 640, groupSize: 'L3', warrantyMonths: 24, priceRial: 80_000_000n, costRial: 59_000_000n },
 ];
 
 /** Free stock (onHand − reserved) per branch after seeding. 0 = demo OUT_OF_STOCK case. */
@@ -79,29 +81,37 @@ export const FREE_STOCK: Record<BranchCode, Record<string, number>> = {
   EAST: { 'SAB-50': 9, 'NIR-55': 4, 'SAB-60': 10, 'NIR-66': 3, 'ATL-60': 2, 'SAB-74': 5, 'ATL-74': 0, 'VAR-70': 1 },
 };
 
-export const TECHNICIANS: ReadonlyArray<{ branch: BranchCode; fullName: string; phone: string; demoUser?: boolean }> = [
-  { branch: 'WEST', fullName: 'رضا کریمی', phone: '09121110001', demoUser: true },
-  { branch: 'WEST', fullName: 'مهدی رستمی', phone: '09121110002' },
-  { branch: 'EAST', fullName: 'علی نوروزی', phone: '09121110003' },
-  { branch: 'EAST', fullName: 'حسین قاسمی', phone: '09121110004' },
+/** Zones are a subset of the branch's districts; capacity = jobs per day. */
+export const TECHNICIANS: ReadonlyArray<{
+  branch: BranchCode;
+  fullName: string;
+  phone: string;
+  serviceDistricts: number[];
+  dailyCapacity: number;
+  demoUser?: boolean;
+}> = [
+  { branch: 'WEST', fullName: 'رضا کریمی', phone: '09121110001', serviceDistricts: [2, 5, 6, 10], dailyCapacity: 6, demoUser: true },
+  { branch: 'WEST', fullName: 'مهدی رستمی', phone: '09121110002', serviceDistricts: [6, 9, 11, 17, 18, 21, 22], dailyCapacity: 6 },
+  { branch: 'EAST', fullName: 'علی نوروزی', phone: '09121110003', serviceDistricts: [1, 3, 4, 7, 8, 12], dailyCapacity: 6 },
+  { branch: 'EAST', fullName: 'حسین قاسمی', phone: '09121110004', serviceDistricts: [3, 13, 14, 15, 16, 19, 20], dailyCapacity: 6 },
 ];
 
 /** weight = relative share among seeded orders. */
 export const CHANNELS = [
   { code: 'WEBSITE', nameFa: 'وب‌سایت', weight: 30 },
-  { code: 'PHONE', nameFa: 'تماس تلفنی', weight: 30 },
+  { code: 'PHONE', nameFa: 'تلفنی', weight: 30 },
   { code: 'INSTAGRAM', nameFa: 'اینستاگرام', weight: 15 },
   { code: 'WHATSAPP', nameFa: 'واتس‌اپ', weight: 10 },
   { code: 'DIVAR', nameFa: 'دیوار', weight: 8 },
-  { code: 'REFERRAL', nameFa: 'معرفی تعمیرگاه', weight: 7 },
+  { code: 'REFERRAL', nameFa: 'همکار', weight: 7 },
 ] as const;
 
-/** Capacity = jobs per branch per slot per day (2 technicians per branch). */
+/** Capacity = jobs per branch per slot per day (design: «۱ از ۶ تکمیل»). */
 export const SLOTS = [
-  { code: 'MORNING', label: 'صبح', startTime: '08:00', endTime: '11:00', capacity: 2 },
-  { code: 'NOON', label: 'ظهر', startTime: '11:00', endTime: '14:00', capacity: 2 },
-  { code: 'AFTERNOON', label: 'عصر', startTime: '14:00', endTime: '17:00', capacity: 2 },
-  { code: 'EVENING', label: 'شب', startTime: '17:00', endTime: '20:00', capacity: 2 },
+  { code: 'MORNING', label: 'صبح', startTime: '08:00', endTime: '11:00', capacity: 6 },
+  { code: 'NOON', label: 'ظهر', startTime: '11:00', endTime: '14:00', capacity: 6 },
+  { code: 'AFTERNOON', label: 'عصر', startTime: '14:00', endTime: '17:00', capacity: 6 },
+  { code: 'EVENING', label: 'شب', startTime: '17:00', endTime: '20:00', capacity: 6 },
 ] as const;
 
 /** Phone numbers are fake (0912000xxxx). Password comes from SEED_DEMO_PASSWORD. */
@@ -120,6 +130,12 @@ export const CUSTOMER_LAST_NAMES = [
   'رضایی', 'حسینی', 'موسوی', 'جعفری', 'صادقی', 'کاظمی', 'مرادی', 'اکبری', 'یوسفی', 'عباسی',
   'شریفی', 'نجفی', 'طاهری', 'فرهادی', 'باقری',
 ];
+export const BRANCH_NOTES = [
+  'قبل از حرکت تماس گرفته شود.',
+  'مشتری بعد از ساعت ۱۷ در دسترس است.',
+  'پارکینگ طبقه منفی یک، زنگ واحد ۴.',
+];
+
 export const STREETS = [
   'خیابان آزادی', 'خیابان شریعتی', 'بلوار کشاورز', 'خیابان ولیعصر', 'خیابان پیروزی',
   'بزرگراه رسالت', 'خیابان دماوند', 'خیابان جمهوری', 'خیابان فاطمی', 'بلوار فردوس',
