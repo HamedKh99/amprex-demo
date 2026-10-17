@@ -296,7 +296,7 @@ export class OrdersService {
 
   /** Adds what the screens need and strips manager-only figures for other roles. */
   private async present(order: OrderDetail, user?: AuthUser) {
-    const [slotBooked, previousOrders] = await Promise.all([
+    const [slotBooked, previousOrders, fit] = await Promise.all([
       this.prisma.order.count({
         where: {
           branchId: order.branchId,
@@ -310,6 +310,10 @@ export class OrdersService {
         select: { createdAt: true },
         orderBy: { createdAt: 'asc' },
       }),
+      this.prisma.batteryCompatibility.findUnique({
+        where: { vehicleModelId_batteryId: { vehicleModelId: order.vehicleModelId, batteryId: order.batteryId } },
+        select: { matchesFactorySpec: true },
+      }),
     ]);
     const { batteryCostRial, ...rest } = order;
     const coreAh = order.coreReturn ? order.coreReturn.ampereHours : order.estimatedCoreAh;
@@ -317,6 +321,8 @@ export class OrdersService {
       ...rest,
       scheduledDate: formatDateOnly(order.scheduledDate),
       slotLoad: { booked: slotBooked, capacity: order.slot.capacity },
+      /** «پیشنهادی» when the battery matches the vehicle's factory spec, else «جایگزین». */
+      batteryMatchesFactorySpec: fit?.matchesFactorySpec ?? false,
       customerHistory: { previousOrders: previousOrders.length, firstOrderAt: previousOrders[0]?.createdAt ?? null },
       financials: seesFinancials(user)
         ? {
