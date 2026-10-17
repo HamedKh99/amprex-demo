@@ -45,6 +45,17 @@ if (!DATABASE_URL) throw new Error('DATABASE_URL is not set (copy .env.example t
 const DEMO_PASSWORD = process.env.SEED_DEMO_PASSWORD;
 if (!DEMO_PASSWORD) throw new Error('SEED_DEMO_PASSWORD is not set (see .env.example)');
 
+// The seed TRUNCATEs every table, so a wrong URL would wipe real data. Anything other than a
+// local database needs an explicit SEED_ALLOW_REMOTE=1 (e.g. the one-time production seed).
+const DB_HOST = new URL(DATABASE_URL).hostname.replace(/^\[|\]$/g, '');
+const LOCAL_DB = ['localhost', '127.0.0.1', '::1'].includes(DB_HOST) || DB_HOST.endsWith('.localhost');
+if (!LOCAL_DB && process.env.SEED_ALLOW_REMOTE !== '1') {
+  throw new Error(
+    `Refusing to seed ${DB_HOST}: the seed deletes ALL data. Set SEED_ALLOW_REMOTE=1 to confirm.`,
+  );
+}
+if (!LOCAL_DB) console.warn(`SEED_ALLOW_REMOTE=1: replacing all data on ${DB_HOST}`);
+
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: DATABASE_URL }) });
 
 // ───────────── deterministic helpers ─────────────
