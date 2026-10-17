@@ -120,7 +120,7 @@ export class ListOrdersQuery extends PageQuery {
   to?: string;
 }
 
-export class TrackOrderQuery {
+export class TrackOrderDto {
   /** «کد پیگیری», e.g. AMX-050725-K7Q2 */
   @NormalizeText()
   @Transform(({ value }) => (typeof value === 'string' ? value.toUpperCase() : value))

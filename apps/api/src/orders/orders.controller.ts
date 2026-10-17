@@ -23,7 +23,7 @@ import {
   CancelDto,
   CreateOrderDto,
   ListOrdersQuery,
-  TrackOrderQuery,
+  TrackOrderDto,
 } from './orders.dto.js';
 import { OrdersService } from './orders.service.js';
 
@@ -60,9 +60,12 @@ export class OrdersController {
     return order;
   }
 
+  /** Public status page. POST so the customer's phone never lands in URLs or access logs. */
   @Public()
-  @Get('track')
-  track(@Query() q: TrackOrderQuery) {
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post('track')
+  @HttpCode(200)
+  track(@Body() q: TrackOrderDto) {
     return this.orders.track(q.code, q.phone);
   }
 

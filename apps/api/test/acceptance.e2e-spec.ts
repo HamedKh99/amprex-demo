@@ -166,9 +166,9 @@ describe('order → assign → mission → finish & settle → report', () => {
     expect(afterIssue.reserved).toBe(afterReserve.reserved - 1);
 
     // 4) Customer tracking by code + phone.
-    const tracked = (await api().get(`/api/orders/track?code=${order.code}&phone=${body.customerPhone}`).expect(200)).body;
+    const tracked = (await api().post('/api/orders/track').send({ code: order.code, phone: body.customerPhone }).expect(200)).body;
     expect(tracked.milestones.every((m: { state: string }) => m.state === 'DONE')).toBe(true);
-    await api().get(`/api/orders/track?code=${order.code}&phone=09350000000`).expect(404);
+    await api().post('/api/orders/track').send({ code: order.code, phone: '09350000000' }).expect(404);
 
     // 5) Managers see profit; operators do not.
     const asManager = (await api().get(`/api/orders/${order.id}`).set(as('manager')).expect(200)).body;
