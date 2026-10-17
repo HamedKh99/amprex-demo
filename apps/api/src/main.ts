@@ -10,6 +10,7 @@ async function bootstrap() {
   // without the Nest CLI plugin, so the docs must not depend on it.
   await SwaggerModule.loadPluginMetadata(metadata);
   const app = configureApp(await NestFactory.create(AppModule));
-  await app.listen(process.env.API_PORT ?? 4000);
+  // PORT is set by hosts such as `vercel dev`; API_PORT by our .env for `pnpm dev`.
+  await app.listen(process.env.PORT ?? process.env.API_PORT ?? 4000);
 }
 await bootstrap();
