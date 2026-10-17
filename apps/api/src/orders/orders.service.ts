@@ -157,7 +157,12 @@ export class OrdersService {
       }),
       this.prisma.order.count({ where }),
     ]);
-    return { items, total, page: q.page, pageSize: q.pageSize };
+    return {
+      items: items.map((o) => ({ ...o, scheduledDate: formatDateOnly(o.scheduledDate) })),
+      total,
+      page: q.page,
+      pageSize: q.pageSize,
+    };
   }
 
   /** Badge counts for the admin navigation. */

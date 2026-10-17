@@ -1,4 +1,6 @@
+import { randomUUID } from 'node:crypto';
 import { type INestApplication, ValidationPipe } from '@nestjs/common';
+import type { NextFunction, Request, Response } from 'express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { HttpExceptionFilter } from './common/http-exception.filter.js';
 
@@ -9,6 +11,11 @@ import { HttpExceptionFilter } from './common/http-exception.filter.js';
 
 /** Shared by main.ts and the e2e tests so both run the same pipeline. */
 export function configureApp(app: INestApplication) {
+  // Short id per request, shown in UI error states («شناسه خطا») and handy in logs.
+  app.use((_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('X-Request-Id', `req-${randomUUID().slice(0, 6)}`);
+    next();
+  });
   app.setGlobalPrefix('api');
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
