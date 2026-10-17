@@ -69,6 +69,7 @@ enum StockMovementType {
   RELEASE
   ISSUE
   ADJUST
+  TRANSFER
 }
 
 // ───────────────────── Organisation ─────────────────────
@@ -206,12 +207,14 @@ model BatteryCompatibility {
 ///   WHERE "branchId" = $1 AND "batteryId" = $2 AND "onHand" - reserved >= 1
 /// 0 rows → 409 OUT_OF_STOCK. A CHECK constraint (migration) keeps 0 ≤ reserved ≤ onHand.
 model Stock {
-  id        String   @id @default(uuid(7)) @db.Uuid
-  branchId  String   @db.Uuid
-  batteryId String   @db.Uuid
-  onHand    Int      @default(0)
-  reserved  Int      @default(0)
-  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  id           String   @id @default(uuid(7)) @db.Uuid
+  branchId     String   @db.Uuid
+  batteryId    String   @db.Uuid
+  onHand       Int      @default(0)
+  reserved     Int      @default(0)
+  /// «حد سفارش»: below this many free units the item is flagged «زیر حد سفارش».
+  reorderPoint Int      @default(4)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
 
   branch  Branch  @relation(fields: [branchId], references: [id])
   battery Battery @relation(fields: [batteryId], references: [id])
@@ -229,6 +232,8 @@ model StockMovement {
   quantity    Int
   orderId     String?           @db.Uuid
   actorUserId String?           @db.Uuid
+  /// Document number for receipts / transfers (RCV-…, TRF-…); order movements use the order code.
+  reference   String?
   note        String?
   createdAt   DateTime          @default(now()) @db.Timestamptz(3)
 
@@ -238,6 +243,7 @@ model StockMovement {
   actor   User?   @relation(fields: [actorUserId], references: [id])
 
   @@index([branchId, batteryId, createdAt])
+  @@index([branchId, createdAt])
   @@index([orderId])
 }
 

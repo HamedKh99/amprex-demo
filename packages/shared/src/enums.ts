@@ -33,15 +33,19 @@ export const INSTALL_LOCATION_LABELS: Record<InstallLocation, string> = {
   WORKPLACE: 'محل کار',
 };
 
-export const STOCK_MOVEMENT_TYPES = ['RECEIPT', 'RESERVE', 'RELEASE', 'ISSUE', 'ADJUST'] as const;
+export const STOCK_MOVEMENT_TYPES = ['RECEIPT', 'RESERVE', 'RELEASE', 'ISSUE', 'ADJUST', 'TRANSFER'] as const;
 export type StockMovementType = (typeof STOCK_MOVEMENT_TYPES)[number];
+/** Design «دفتر گردش کالا» wording. */
 export const STOCK_MOVEMENT_LABELS: Record<StockMovementType, string> = {
-  RECEIPT: 'ورود به انبار',
-  RESERVE: 'رزرو برای سفارش',
+  RECEIPT: 'ورود',
+  RESERVE: 'رزرو',
   RELEASE: 'آزادسازی رزرو',
-  ISSUE: 'خروج برای نصب',
+  ISSUE: 'خروج نصب',
   ADJUST: 'اصلاح موجودی',
+  TRANSFER: 'انتقال',
 };
+/** Ledger rows for returned old batteries (they are not a stocked SKU). */
+export const CORE_RETURN_LABEL = 'برگشت داغی';
 
 /** Technician availability for one order (design: assignment sheet badges). */
 export const TECHNICIAN_FIT = ['RECOMMENDED', 'FREE', 'BUSY', 'FULL'] as const;
