@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev --port 3000",
+    "prebuild": "pnpm --filter @amprex/shared build",
     "build": "next build",
     "start": "next start --port 3000",
     "typecheck": "tsc --noEmit"

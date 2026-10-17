@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "prebuild": "pnpm --filter @amprex/shared build",
     "build": "nest build",
     "dev": "nest start --watch",
     "start": "node dist/main.js",

@@ -6,7 +6,7 @@
     "node": "24.x"
   },
   "scripts": {
-    "build": "pnpm -r build",
+    "build": "pnpm -r --workspace-concurrency=1 build",
     "dev": "pnpm --filter @amprex/shared build && pnpm -r --parallel --filter !@amprex/shared dev",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
