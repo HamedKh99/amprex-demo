@@ -6,6 +6,8 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   CARD_TO_CARD: 'کارت‌به‌کارت',
   ONLINE: 'درگاه اینترنتی',
 };
+/** Methods a technician can take on site (design: finish form). */
+export const ON_SITE_PAYMENT_METHODS: readonly PaymentMethod[] = ['CASH', 'CARD_POS', 'CARD_TO_CARD'];
 
 export const PAYMENT_STATUSES = ['PENDING', 'PAID', 'FAILED', 'REFUNDED'] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
@@ -16,13 +18,19 @@ export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
   REFUNDED: 'بازگشت وجه',
 };
 
-/** Condition of the returned old battery (باتری داغی). */
-export const CORE_CONDITIONS = ['INTACT', 'DAMAGED', 'NOT_RETURNED'] as const;
-export type CoreCondition = (typeof CORE_CONDITIONS)[number];
-export const CORE_CONDITION_LABELS: Record<CoreCondition, string> = {
-  INTACT: 'سالم',
-  DAMAGED: 'آسیب‌دیده',
-  NOT_RETURNED: 'تحویل داده نشد',
+export const VEHICLE_TYPES = ['CAR', 'MOTORCYCLE'] as const;
+export type VehicleType = (typeof VEHICLE_TYPES)[number];
+export const VEHICLE_TYPE_LABELS: Record<VehicleType, string> = {
+  CAR: 'خودرو',
+  MOTORCYCLE: 'موتورسیکلت',
+};
+
+export const INSTALL_LOCATIONS = ['PARKING', 'STREET', 'WORKPLACE'] as const;
+export type InstallLocation = (typeof INSTALL_LOCATIONS)[number];
+export const INSTALL_LOCATION_LABELS: Record<InstallLocation, string> = {
+  PARKING: 'پارکینگ',
+  STREET: 'کنار خیابان',
+  WORKPLACE: 'محل کار',
 };
 
 export const STOCK_MOVEMENT_TYPES = ['RECEIPT', 'RESERVE', 'RELEASE', 'ISSUE', 'ADJUST'] as const;
@@ -33,4 +41,14 @@ export const STOCK_MOVEMENT_LABELS: Record<StockMovementType, string> = {
   RELEASE: 'آزادسازی رزرو',
   ISSUE: 'خروج برای نصب',
   ADJUST: 'اصلاح موجودی',
+};
+
+/** Technician availability for one order (design: assignment sheet badges). */
+export const TECHNICIAN_FIT = ['RECOMMENDED', 'FREE', 'BUSY', 'FULL'] as const;
+export type TechnicianFit = (typeof TECHNICIAN_FIT)[number];
+export const TECHNICIAN_FIT_LABELS: Record<TechnicianFit, string> = {
+  RECOMMENDED: 'پیشنهاد سیستم',
+  FREE: 'آزاد',
+  BUSY: 'پربار',
+  FULL: 'ظرفیت تکمیل',
 };
