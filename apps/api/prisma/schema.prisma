@@ -25,12 +25,28 @@ enum Role {
 enum OrderStatus {
   CREATED
   ASSIGNED
+  ACCEPTED
   EN_ROUTE
   ON_SITE
-  INSTALLED
-  PAID
+  INSTALLING
   COMPLETED
   CANCELLED
+}
+
+enum OrderEventKind {
+  STATUS
+  NOTE
+}
+
+enum VehicleType {
+  CAR
+  MOTORCYCLE
+}
+
+enum InstallLocation {
+  PARKING
+  STREET
+  WORKPLACE
 }
 
 enum PaymentMethod {
@@ -45,12 +61,6 @@ enum PaymentStatus {
   PAID
   FAILED
   REFUNDED
-}
-
-enum CoreCondition {
-  INTACT
-  DAMAGED
-  NOT_RETURNED
 }
 
 enum StockMovementType {
@@ -106,15 +116,19 @@ model User {
 }
 
 model Technician {
-  id        String   @id @default(uuid(7)) @db.Uuid
-  branchId  String   @db.Uuid
+  id               String   @id @default(uuid(7)) @db.Uuid
+  branchId         String   @db.Uuid
   /// Login account; a technician without one cannot use /tech.
-  userId    String?  @unique @db.Uuid
-  fullName  String
-  phone     String   @unique
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  userId           String?  @unique @db.Uuid
+  fullName         String
+  phone            String   @unique
+  /// Tehran districts this technician covers; used to suggest assignments.
+  serviceDistricts Int[]
+  /// Jobs per day (design: «بار امروز ۳ از ۶»).
+  dailyCapacity    Int      @default(6)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(3)
 
   branch   Branch    @relation(fields: [branchId], references: [id])
   user     User?     @relation(fields: [userId], references: [id])
@@ -126,16 +140,22 @@ model Technician {
 // ─────────────────────── Catalogue ───────────────────────
 
 model VehicleModel {
-  id        String  @id @default(uuid(7)) @db.Uuid
-  code      String  @unique
+  id        String      @id @default(uuid(7)) @db.Uuid
+  code      String      @unique
+  type      VehicleType @default(CAR)
   make      String
+  /// Persian brand shown to customers, e.g. «ایران‌خودرو».
+  brandFa   String
   model     String
-  /// Persian display name, e.g. «پژو ۲۰۶».
+  /// Persian display name, e.g. «پژو ۲۰۶ تیپ ۲».
   nameFa    String
+  /// Factory battery spec (design: «مشخصه کارخانه ۶۰ آمپر · L2»).
+  factoryAh Int
+  groupSize String
   yearFrom  Int?
   yearTo    Int?
-  isActive  Boolean @default(true)
-  sortOrder Int     @default(0)
+  isActive  Boolean     @default(true)
+  sortOrder Int         @default(0)
 
   compatibilities BatteryCompatibility[]
   orders          Order[]
@@ -152,10 +172,12 @@ model Battery {
   /// Physical case group (e.g. L2, L3) — informational.
   groupSize      String
   warrantyMonths Int
-  /// Price of the battery without core return, Rial.
+  /// Line shown under the brand, e.g. «SMF · سیلد».
+  series         String
+  /// Selling price, Rial.
   priceRial      BigInt
-  /// Discount when the old battery (باتری داغی) is returned intact, Rial.
-  coreCreditRial BigInt
+  /// Purchase cost, Rial (gross-profit estimate; never shown to customers or technicians).
+  costRial       BigInt
   isActive       Boolean @default(true)
 
   compatibilities BatteryCompatibility[]
@@ -165,10 +187,10 @@ model Battery {
 }
 
 model BatteryCompatibility {
-  vehicleModelId String  @db.Uuid
-  batteryId      String  @db.Uuid
-  /// Shown first to the customer / operator.
-  isRecommended  Boolean @default(false)
+  vehicleModelId     String  @db.Uuid
+  batteryId          String  @db.Uuid
+  /// Same Ah as the vehicle's factory spec («مطابق مشخصات کارخانه»); otherwise an alternative.
+  matchesFactorySpec Boolean @default(false)
 
   vehicleModel VehicleModel @relation(fields: [vehicleModelId], references: [id], onDelete: Cascade)
   battery      Battery      @relation(fields: [batteryId], references: [id], onDelete: Cascade)
@@ -261,8 +283,10 @@ model Customer {
 
 model Order {
   id             String      @id @default(uuid(7)) @db.Uuid
-  /// Human-facing number (shown as e.g. «سفارش ۱۰۴۲»).
+  /// Internal sequence number.
   number         Int         @unique @default(autoincrement())
+  /// Customer-facing tracking code, AMX-<Jalali YYMMDD>-<4 chars>.
+  code           String      @unique
   /// Client-supplied Idempotency-Key header of POST /orders.
   idempotencyKey String      @unique
   status         OrderStatus @default(CREATED)
@@ -275,23 +299,28 @@ model Order {
   slotId         String @db.Uuid
 
   /// Installation day (Tehran local date).
-  scheduledDate DateTime @db.Date
-  district      Int
-  address       String
-  latitude      Decimal? @db.Decimal(9, 6)
-  longitude     Decimal? @db.Decimal(9, 6)
-  customerNote  String?
+  scheduledDate   DateTime        @db.Date
+  district        Int
+  address         String
+  installLocation InstallLocation @default(PARKING)
+  latitude        Decimal?        @db.Decimal(9, 6)
+  longitude       Decimal?        @db.Decimal(9, 6)
+  customerNote    String?
+  /// Branch note for the technician («یادداشت شعبه»).
+  branchNote      String?
 
-  /// Customer says they will hand over the old battery; final outcome is in CoreReturn.
-  coreReturnExpected Boolean @default(true)
+  /// Price estimate assumes an old battery of this Ah is returned (null = no old battery).
+  estimatedCoreAh Int?
 
   // Price snapshot computed by the API (Rial); the UI only displays it.
   // totalRial = batteryPriceRial + installFeeRial − coreCreditRial.
-  // coreCreditRial is an estimate until INSTALLED, then set from CoreReturn.creditAppliedRial.
+  // coreCreditRial is an estimate until COMPLETED, then set from CoreReturn.creditAppliedRial.
   batteryPriceRial BigInt
   installFeeRial   BigInt
   coreCreditRial   BigInt
   totalRial        BigInt
+  /// Snapshot of Battery.costRial at order time (gross profit).
+  batteryCostRial  BigInt
 
   createdById  String?   @db.Uuid
   cancelReason String?
@@ -319,17 +348,19 @@ model Order {
   @@index([createdAt])
 }
 
-/// Written by OrderStateService.transition() for every status change (and creation).
+/// STATUS rows are written by OrderStateService (every status change and creation);
+/// NOTE rows record changes to the branch note.
 model OrderEvent {
-  id          String       @id @default(uuid(7)) @db.Uuid
-  orderId     String       @db.Uuid
+  id          String         @id @default(uuid(7)) @db.Uuid
+  orderId     String         @db.Uuid
+  kind        OrderEventKind @default(STATUS)
   fromStatus  OrderStatus?
-  toStatus    OrderStatus
-  actorUserId String?      @db.Uuid
+  toStatus    OrderStatus?
+  actorUserId String?        @db.Uuid
   note        String?
-  /// Extra context, e.g. { technicianId } on ASSIGNED.
+  /// Extra context, e.g. { technicianId } on ASSIGNED, { from, to } on NOTE.
   data        Json?
-  createdAt   DateTime     @default(now()) @db.Timestamptz(3)
+  createdAt   DateTime       @default(now()) @db.Timestamptz(3)
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
   actor User? @relation(fields: [actorUserId], references: [id])
@@ -345,8 +376,10 @@ model Mission {
   technicianId String @db.Uuid
 
   assignedAt  DateTime  @default(now()) @db.Timestamptz(3)
+  acceptedAt  DateTime? @db.Timestamptz(3)
   departedAt  DateTime? @db.Timestamptz(3)
   arrivedAt   DateTime? @db.Timestamptz(3)
+  startedAt   DateTime? @db.Timestamptz(3)
   installedAt DateTime? @db.Timestamptz(3)
 
   /// Serial printed on the new battery that was installed.
@@ -359,16 +392,18 @@ model Mission {
   @@index([technicianId, assignedAt])
 }
 
-/// Outcome of the old-battery (باتری داغی) handover, recorded at INSTALLED.
+/// Old-battery (باتری داغی) handover, recorded at «ثبت پایان و تسویه».
 model CoreReturn {
-  id              String        @id @default(uuid(7)) @db.Uuid
-  orderId         String        @unique @db.Uuid
-  condition       CoreCondition
-  /// Brand / capacity of the old battery as seen by the technician.
-  oldBatteryNote  String?
-  /// Credit actually granted (0 when NOT_RETURNED or rejected as DAMAGED), Rial.
+  id                String   @id @default(uuid(7)) @db.Uuid
+  orderId           String   @unique @db.Uuid
+  returned          Boolean
+  /// Ah read from the old battery's label; null when not returned.
+  ampereHours       Int?
+  /// Credit granted = ampereHours × coreCreditPerAhRial, Rial.
   creditAppliedRial BigInt
-  recordedAt      DateTime      @default(now()) @db.Timestamptz(3)
+  /// Estimated scrap value recovered by the company, Rial.
+  scrapValueRial    BigInt
+  recordedAt        DateTime @default(now()) @db.Timestamptz(3)
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 }
@@ -376,7 +411,10 @@ model CoreReturn {
 model Payment {
   id           String        @id @default(uuid(7)) @db.Uuid
   orderId      String        @db.Uuid
+  /// Amount actually received.
   amountRial   BigInt
+  /// Payable at settlement; amountRial ≠ expectedRial is a «مغایرت تسویه».
+  expectedRial BigInt
   method       PaymentMethod
   status       PaymentStatus @default(PENDING)
   /// POS / bank / gateway reference.
