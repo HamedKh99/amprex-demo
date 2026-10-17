@@ -31,7 +31,7 @@ export class CompatibleBatteriesQuery {
   @Max(22)
   district?: number;
 
-  /** Only batteries with a free unit at the serving branch (requires district). */
+  /** Only batteries with a free unit (at the serving branch, or anywhere without a district). */
   @IsOptional()
   @ToBoolean()
   @IsBoolean()

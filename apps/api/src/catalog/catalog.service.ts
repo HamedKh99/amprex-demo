@@ -81,13 +81,17 @@ export class CatalogService {
       orderBy: [{ matchesFactorySpec: 'desc' }, { battery: { priceRial: 'asc' } }],
     });
 
+    // With a district: stock at the branch serving it. Without one (customer has not given an
+    // address yet): free units at any active branch; the order step re-checks per branch.
     const branch = district ? await this.branches.forDistrict(district) : null;
-    const stock = branch
-      ? await this.prisma.stock.findMany({
-          where: { branchId: branch.id, batteryId: { in: links.map((l) => l.batteryId) } },
-        })
-      : [];
-    const free = new Map(stock.map((s) => [s.batteryId, s.onHand - s.reserved]));
+    const stock = await this.prisma.stock.findMany({
+      where: {
+        batteryId: { in: links.map((l) => l.batteryId) },
+        ...(branch ? { branchId: branch.id } : { branch: { isActive: true } }),
+      },
+    });
+    const free = new Map<string, number>();
+    for (const s of stock) free.set(s.batteryId, (free.get(s.batteryId) ?? 0) + s.onHand - s.reserved);
 
     const batteries = links
       .map(({ battery, matchesFactorySpec }) => ({
@@ -95,9 +99,9 @@ export class CatalogService {
         matchesFactorySpec,
         price: quote(battery),
         finalPriceExamples: finalPriceExamples(battery),
-        inStock: branch ? (free.get(battery.id) ?? 0) > 0 : null,
+        inStock: (free.get(battery.id) ?? 0) > 0,
       }))
-      .filter((b) => !(availableOnly && branch) || b.inStock);
+      .filter((b) => !availableOnly || b.inStock);
 
     return {
       vehicle,
