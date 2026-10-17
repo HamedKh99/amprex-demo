@@ -1,9 +1,136 @@
 @import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
 
-@theme {
-  --font-sans: var(--font-vazirmatn), ui-sans-serif, system-ui, sans-serif;
+/*
+ * Design tokens from the handoff «سیستم بصری» (AMPREX visual system).
+ * Rules: amber only for the one primary action per screen; green/red only for status;
+ * in-between states use slate. Radius 8 for controls, 12 for cards, full for badges.
+ * Light only — the design defines no dark theme.
+ */
+:root {
+  /* surfaces */
+  --background: #f8fafc; /* زمینه صفحه */
+  --foreground: #0f172a; /* متن، انتخاب‌شده */
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+
+  /* brand */
+  --primary: #ffb21a; /* فقط اقدام اصلی */
+  --primary-hover: #f59e0b;
+  --primary-border: #f59e0b;
+  --primary-foreground: #0f172a;
+
+  --secondary: #f1f5f9;
+  --secondary-foreground: #0f172a;
+  --muted: #f1f5f9; /* زمینه ثانویه */
+  --muted-foreground: #475569; /* متن ثانویه */
+  --subtle-foreground: #64748b; /* برچسب و توضیح */
+  --accent: #f1f5f9;
+  --accent-foreground: #0f172a;
+
+  /* status */
+  --success: #047857;
+  --success-muted: #ecfdf5;
+  --success-border: #a7f3d0;
+  --destructive: #b91c1c;
+  --destructive-muted: #fef2f2;
+  --destructive-border: #fecaca;
+
+  /* lines */
+  --border: #e2e8f0; /* مرز، اسکلتون */
+  --input: #cbd5e1;
+  --strong-border: #94a3b8;
+  --ring: rgb(255 178 26 / 0.45); /* فوکوس: مرز تیره + حلقه کهربایی */
+
+  /* slate steps used for in-between states */
+  --slate-300: #cbd5e1;
+  --slate-500: #64748b;
+  --slate-600: #475569;
+  --slate-700: #334155;
+  --slate-800: #1e293b;
+
+  --link: #b45309;
+  --link-hover: #92400e;
+
+  --radius: 0.5rem;
 }
 
-html {
-  font-feature-settings: 'ss01';
+@theme inline {
+  --font-sans: var(--font-vazirmatn), Tahoma, ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-sans);
+  --font-mono: ui-monospace, Menlo, Consolas, monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-border: var(--primary-border);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-subtle-foreground: var(--subtle-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-success: var(--success);
+  --color-success-muted: var(--success-muted);
+  --color-success-border: var(--success-border);
+  --color-destructive: var(--destructive);
+  --color-destructive-muted: var(--destructive-muted);
+  --color-destructive-border: var(--destructive-border);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-strong-border: var(--strong-border);
+  --color-ring: var(--ring);
+  --color-slate-300: var(--slate-300);
+  --color-slate-500: var(--slate-500);
+  --color-slate-600: var(--slate-600);
+  --color-slate-700: var(--slate-700);
+  --color-slate-800: var(--slate-800);
+  --color-link: var(--link);
+  --color-link-hover: var(--link-hover);
+
+  /* radii: ۸ دکمه و ورودی · ۱۰ ورودی لمسی · ۱۲ کارت · ۱۴ کارت موبایل · کامل برای Badge */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 8px;
+  --radius-control: 8px;
+  --radius-touch: 10px;
+  --radius-xl: 12px;
+  --radius-card: 12px;
+  --radius-2xl: 14px;
+  --radius-sheet: 14px;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+  a {
+    color: var(--link);
+  }
+  a:hover {
+    color: var(--link-hover);
+  }
+  /* Codes and serials are Latin, left-to-right, inside RTL text. */
+  .ltr-code {
+    @apply font-mono;
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
 }
