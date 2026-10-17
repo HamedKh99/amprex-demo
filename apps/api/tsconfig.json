@@ -20,5 +20,5 @@
     "strictPropertyInitialization": false,
     "types": ["vitest/globals", "node"]
   },
-  "include": ["src", "prisma", "test", "prisma.config.ts", "vitest.config.ts"]
+  "include": ["src", "prisma", "scripts", "test", "prisma.config.ts", "vitest.config.ts"]
 }

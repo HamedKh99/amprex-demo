@@ -31,6 +31,10 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      # The API build regenerates src/metadata.ts (Swagger DTO schemas); a diff means it was not
+      # re-run after a DTO change. Fix with: pnpm --filter @amprex/api swagger:metadata
+      - name: Swagger metadata is up to date
+        run: git diff --exit-code -- apps/api/src/metadata.ts
 
   e2e:
     name: Acceptance path (Postgres)
