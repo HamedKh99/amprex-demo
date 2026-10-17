@@ -2,6 +2,9 @@
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 
+/* Dark styles only under .dark, which this light-only design never sets (not the OS setting). */
+@custom-variant dark (&:is(.dark *));
+
 /*
  * Design tokens from the handoff «سیستم بصری» (AMPREX visual system).
  * Rules: amber only for the one primary action per screen; green/red only for status;

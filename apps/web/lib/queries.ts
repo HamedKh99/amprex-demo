@@ -3,7 +3,21 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './api';
 import { saveSession, type SessionUser } from './session';
-import type { Dashboard, Mission, OrderDetail, OrderListItem, Page, Settings, Settlement, TechnicianOption } from './types';
+import type { VehicleType } from '@amprex/shared';
+import type {
+  Availability,
+  CompatibleBatteries,
+  Dashboard,
+  Mission,
+  OrderDetail,
+  OrderListItem,
+  Page,
+  Settings,
+  Settlement,
+  TechnicianOption,
+  Tracking,
+  VehicleModel,
+} from './types';
 
 export const keys = {
   settings: ['settings'] as const,
@@ -96,3 +110,44 @@ export const useBranches = () =>
 
 export const useDashboard = () =>
   useQuery({ queryKey: ['dashboard'], queryFn: () => api<Dashboard>('/dashboard'), refetchInterval: 60_000 });
+
+// ── customer site ──
+
+export const useBrands = () =>
+  useQuery({
+    queryKey: ['catalog', 'brands'],
+    queryFn: () => api<{ type: VehicleType; brandFa: string }[]>('/catalog/brands', { auth: false }),
+    staleTime: Infinity,
+  });
+
+export const useVehicles = (type: VehicleType, brand?: string, q?: string) =>
+  useQuery({
+    queryKey: ['catalog', 'vehicles', type, brand ?? '', q ?? ''],
+    queryFn: ({ signal }) => api<VehicleModel[]>('/catalog/vehicles', { query: { type, brand, q }, auth: false, signal }),
+    placeholderData: keepPreviousData,
+    staleTime: 5 * 60_000,
+  });
+
+export const useCompatible = (vehicleId: string | undefined, district?: number) =>
+  useQuery({
+    queryKey: ['catalog', 'compatible', vehicleId, district ?? null],
+    queryFn: () => api<CompatibleBatteries>(`/catalog/vehicles/${vehicleId}/batteries`, { query: { district }, auth: false }),
+    enabled: !!vehicleId,
+  });
+
+export const useAvailability = (district: number | undefined) =>
+  useQuery({
+    queryKey: ['availability', district],
+    queryFn: () => api<Availability>('/lookups/availability', { query: { district }, auth: false }),
+    enabled: !!district,
+    refetchInterval: 60_000,
+  });
+
+export const useTrack = (code: string, phone: string, enabled: boolean) =>
+  useQuery({
+    queryKey: ['track', code, phone],
+    // POST: the phone number stays out of URLs and logs.
+    queryFn: () => api<Tracking>('/orders/track', { method: 'POST', body: { code, phone }, auth: false }),
+    enabled,
+    retry: false,
+  });
