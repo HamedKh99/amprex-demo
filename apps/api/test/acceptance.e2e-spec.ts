@@ -302,6 +302,60 @@ describe('business rules', () => {
   });
 });
 
+describe('inventory and reports', () => {
+  it('receives stock, transfers between branches and keeps ledger balances right', async () => {
+    const west = await prisma.branch.findUniqueOrThrow({ where: { code: 'WEST' } });
+    const east = await prisma.branch.findUniqueOrThrow({ where: { code: 'EAST' } });
+    const battery = await prisma.battery.findUniqueOrThrow({ where: { sku: 'SAB-74' } });
+
+    const before = (await api().get('/api/inventory/stock').set(as('manager')).expect(200)).body;
+    expect(before.branch.id).toBe(west.id);
+    const row = before.items.find((i: { battery: { sku: string } }) => i.battery.sku === 'SAB-74');
+    expect(row.available).toBe(row.onHand - row.reserved);
+    expect(before.totals.onHand).toBe(before.items.reduce((t: number, i: { onHand: number }) => t + i.onHand, 0));
+    expect(before.core.count).toBeGreaterThan(0);
+
+    const rcv = (
+      await api().post('/api/inventory/receipts').set(as('manager')).send({ branchId: west.id, batteryId: battery.id, quantity: 5 }).expect(201)
+    ).body;
+    expect(rcv.reference).toMatch(/^RCV-\d{6}-[A-Z2-9]{4}$/);
+
+    // Manager can send from own branch only, and never more than the free units.
+    await api().post('/api/inventory/transfers').set(as('manager')).send({ fromBranchId: east.id, toBranchId: west.id, batteryId: battery.id, quantity: 1 }).expect(403);
+    const tooMany = await api().post('/api/inventory/transfers').set(as('manager')).send({ fromBranchId: west.id, toBranchId: east.id, batteryId: battery.id, quantity: 999 }).expect(409);
+    expect(tooMany.body.code).toBe('OUT_OF_STOCK');
+    const trf = (
+      await api().post('/api/inventory/transfers').set(as('manager')).send({ fromBranchId: west.id, toBranchId: east.id, batteryId: battery.id, quantity: 3 }).expect(201)
+    ).body;
+    expect(trf.reference).toMatch(/^TRF-/);
+
+    const after = (await api().get('/api/inventory/stock').set(as('manager')).expect(200)).body;
+    const rowAfter = after.items.find((i: { battery: { sku: string } }) => i.battery.sku === 'SAB-74');
+    expect(rowAfter.onHand).toBe(row.onHand + 5 - 3);
+
+    const ledger = (await api().get('/api/inventory/movements').set(as('manager')).expect(200)).body;
+    const out = ledger.find((m: { reference: string; type: string }) => m.reference === trf.reference);
+    expect(out).toMatchObject({ type: 'TRANSFER', quantity: -3, balance: rowAfter.onHand });
+    expect(ledger.find((m: { reference: string }) => m.reference === rcv.reference)).toMatchObject({ type: 'RECEIPT', quantity: 5 });
+    const eastLedger = (await api().get(`/api/inventory/movements?branchId=${east.id}`).set(as('admin')).expect(200)).body;
+    expect(eastLedger.find((m: { reference: string }) => m.reference === trf.reference)).toMatchObject({ quantity: 3 });
+  });
+
+  it('reports sales and profit of completed orders', async () => {
+    const r = (await api().get('/api/reports/sales?groupBy=product_channel').set(as('manager')).expect(200)).body;
+    expect(r.totals.count).toBeGreaterThan(0);
+    const sum = (k: string) => r.rows.reduce((t: bigint, x: Record<string, string>) => t + BigInt(x[k]!), 0n).toString();
+    expect(sum('netRial')).toBe(r.totals.netRial);
+    expect(BigInt(r.totals.grossRial) - BigInt(r.totals.creditRial)).toBe(BigInt(r.totals.netRial));
+    expect(BigInt(r.totals.netRial) - BigInt(r.totals.costRial)).toBe(BigInt(r.totals.profitRial));
+    expect(r.rows[0]).toHaveProperty('channelNameFa');
+    const byProduct = (await api().get('/api/reports/sales?groupBy=product').set(as('manager')).expect(200)).body;
+    expect(byProduct.rows.every((x: { channelCode: string | null }) => x.channelCode === null)).toBe(true);
+    expect(byProduct.totals.netRial).toBe(r.totals.netRial);
+    await api().get('/api/reports/sales').set(as('operator')).expect(403);
+  });
+});
+
 describe('branch scope', () => {
   it('hides other branches from branch roles and other missions from technicians', async () => {
     const east = await prisma.order.findFirstOrThrow({ where: { branch: { code: 'EAST' } } });
