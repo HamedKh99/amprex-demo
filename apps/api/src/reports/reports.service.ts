@@ -50,6 +50,7 @@ export class ReportsService {
           open: number;
           paidOrders: number;
           revenueRial: bigint;
+          grossProfitRial: bigint;
           avgLeadHours: number | null;
         }>(Prisma.sql`
           SELECT COUNT(*)::int AS orders,
@@ -58,9 +59,11 @@ export class ReportsService {
                  COUNT(*) FILTER (WHERE status NOT IN ('COMPLETED', 'CANCELLED'))::int AS open,
                  COUNT(*) FILTER (WHERE paid > 0)::int AS "paidOrders",
                  COALESCE(SUM(paid), 0)::bigint AS "revenueRial",
+                 COALESCE(SUM(ord."totalRial" - ord."batteryCostRial" + COALESCE(cr."scrapValueRial", 0))
+                   FILTER (WHERE ord.status = 'COMPLETED'), 0)::bigint AS "grossProfitRial",
                  ROUND(AVG(EXTRACT(EPOCH FROM ("completedAt" - "createdAt")) / 3600)
                    FILTER (WHERE status = 'COMPLETED')::numeric, 1)::float8 AS "avgLeadHours"
-          FROM ord`),
+          FROM ord LEFT JOIN "CoreReturn" cr ON cr."orderId" = ord.id`),
         q<{ status: string; orders: number }>(Prisma.sql`
           SELECT status::text, COUNT(*)::int AS orders FROM ord GROUP BY status ORDER BY orders DESC`),
         q<{ code: string; nameFa: string; orders: number; completed: number; revenueRial: bigint }>(Prisma.sql`
@@ -71,7 +74,7 @@ export class ReportsService {
           GROUP BY c.code, c."nameFa", c."sortOrder" ORDER BY orders DESC, c."sortOrder"`),
         q<{ sku: string; nameFa: string; installed: number; revenueRial: bigint }>(Prisma.sql`
           SELECT b.sku, b."nameFa",
-                 COUNT(*) FILTER (WHERE ord.status IN ('INSTALLED', 'PAID', 'COMPLETED'))::int AS installed,
+                 COUNT(*) FILTER (WHERE ord.status = 'COMPLETED')::int AS installed,
                  COALESCE(SUM(ord.paid), 0)::bigint AS "revenueRial"
           FROM ord JOIN "Battery" b ON b.id = ord."batteryId"
           GROUP BY b.sku, b."nameFa" ORDER BY installed DESC, b.sku`),
@@ -94,16 +97,17 @@ export class ReportsService {
                    AS "avgJobMinutes"
           FROM ord JOIN "Mission" m ON m."orderId" = ord.id JOIN "Technician" t ON t.id = m."technicianId"
           GROUP BY t.id, t."fullName" ORDER BY installs DESC, t."fullName"`),
-        q<{ condition: string; count: number; creditRial: bigint }>(Prisma.sql`
-          SELECT cr.condition::text, COUNT(*)::int AS count,
+        q<{ returned: boolean; count: number; ampereHours: number; creditRial: bigint }>(Prisma.sql`
+          SELECT cr.returned, COUNT(*)::int AS count,
+                 COALESCE(SUM(cr."ampereHours"), 0)::int AS "ampereHours",
                  COALESCE(SUM(cr."creditAppliedRial"), 0)::bigint AS "creditRial"
           FROM ord JOIN "CoreReturn" cr ON cr."orderId" = ord.id
-          GROUP BY cr.condition ORDER BY count DESC`),
+          GROUP BY cr.returned ORDER BY cr.returned DESC`),
       ]);
 
     const kpi = kpiRows[0]!;
     const installed = coreReturns.reduce((s, r) => s + r.count, 0);
-    const returned = coreReturns.filter((r) => r.condition !== 'NOT_RETURNED').reduce((s, r) => s + r.count, 0);
+    const returned = coreReturns.filter((r) => r.returned).reduce((s, r) => s + r.count, 0);
 
     return {
       range: { from, to, branchId: branchId ?? null },
