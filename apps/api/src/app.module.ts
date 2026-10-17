@@ -5,12 +5,12 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './auth/auth.module.js';
 import { BranchesModule } from './branches/branches.module.js';
 import { CatalogModule } from './catalog/catalog.module.js';
+import { DashboardModule } from './dashboard/dashboard.module.js';
 import { HealthController } from './health/health.controller.js';
 import { InventoryModule } from './inventory/inventory.module.js';
 import { LookupsModule } from './lookups/lookups.module.js';
 import { MissionsModule } from './missions/missions.module.js';
 import { OrdersModule } from './orders/orders.module.js';
-import { PaymentsModule } from './payments/payments.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { ReportsModule } from './reports/reports.module.js';
 import { UsersModule } from './users/users.module.js';
@@ -29,8 +29,8 @@ import { UsersModule } from './users/users.module.js';
     LookupsModule,
     OrdersModule,
     MissionsModule,
-    PaymentsModule,
     ReportsModule,
+    DashboardModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
