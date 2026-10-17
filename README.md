@@ -58,17 +58,17 @@ radii are CSS variables in `apps/web/app/globals.css`. Every list has loading, e
 | `/tech/missions/:id`, `…/finish`, `…/done` | Mission detail (5 steps), finish & settle, confirmation |
 | `/admin/login`, `/admin` | Admin login, dashboard |
 | `/admin/orders`, `/admin/orders/:id` | Orders table, order detail with technician assignment sheet |
-
-Not built in this pass (shown greyed out in the admin menu): inventory and reports screens — the API for both exists.
+| `/admin/inventory` | Stock per warehouse, receipts, transfers, movement ledger |
+| `/admin/reports` | Sales and profit by product / channel, CSV export (managers and super admin) |
 
 ## API map
 
 | Who | Endpoints |
 | --- | --- |
 | Public (site) | `GET catalog/brands`, `GET catalog/vehicles?type=&brand=&q=`, `GET catalog/vehicles/:id/batteries?district=&availableOnly=`, `GET lookups/availability?district=`, `GET lookups/settings`, `POST orders` (Idempotency-Key), `POST orders/track` |
-| Office | `GET orders`, `GET orders/counts`, `GET orders/:id`, `GET orders/:id/technicians`, `POST orders/:id/assign|cancel`, `GET dashboard`, `GET users/technicians`, `GET inventory/stock`, `POST inventory/receipts` |
+| Office | `GET orders`, `GET orders/counts`, `GET orders/:id`, `GET orders/:id/technicians`, `POST orders/:id/assign|cancel`, `GET dashboard`, `GET users/technicians`, `GET inventory/stock?branchId=`, `GET inventory/movements?branchId=&from=&to=&type=`, `POST inventory/receipts`, `POST inventory/transfers` |
 | Technician | `GET missions?view=`, `POST missions/:orderId/accept|depart|arrive|start`, `GET missions/:orderId/settlement`, `POST missions/:orderId/finish` |
-| Manager/admin | `GET reports/summary?from=&to=&branchId=` |
+| Manager/admin | `GET reports/summary?from=&to=&branchId=`, `GET reports/sales?from=&to=&branchId=&groupBy=product|channel|product_channel` |
 
 Lifecycle: `CREATED → ASSIGNED → ACCEPTED → EN_ROUTE → ON_SITE → INSTALLING → COMPLETED`, `CANCELLED` from any
 step before completion. Every status change goes through `OrderStateService.transition()`. It checks the role against the
@@ -110,7 +110,12 @@ Rules are in `apps/api/src/config/business-rules.ts`; demo data is in `apps/api/
 18. **Reports** cover orders *created* in the date range (Tehran days). Revenue = PAID payments of those orders.
 19. **Technician logins:** only one of the 4 seeded technicians has an account (the demo TECHNICIAN user).
 20. Money is stored as BigInt Rial and sent in JSON as a decimal string. The UI shows Toman (÷10).
-21. **Sessions** are a JWT in localStorage («مرا در این دستگاه به خاطر بسپار») or sessionStorage. Fine for a demo; production should use an httpOnly cookie.
+21. **Reorder point («حد سفارش»)** is per branch and product (seeded: Saba 60 → 10, Saba 50 → 8, Atlas 60 and Saba 74 → 5, others 4). An item is «زیر حد سفارش» when free units fall below it. There is no screen to edit it yet.
+22. **Transfers** move free units only (on hand − reserved), under one TRF- number; a branch manager can send only from their own branch. Receipts get an RCV- number.
+23. **Ledger («دفتر گردش کالا»)**: «مانده» is units on hand after the row. Reserve and release rows show the change in free units (−۱ / +۱) and leave on hand unchanged. Returned old batteries appear as «برگشت داغی» with a running count.
+24. **Old batteries in stock** are all returned cores of the branch; sending them to recycling is not tracked yet, so the row always reads «آماده ارسال بازیافت».
+25. **Sales report** counts orders COMPLETED in the range (by completion day). Sales = battery price + install fee; net = payable; cost = battery cost − scrap value of the returned core; margin = gross profit ÷ net.
+26. **Sessions** are a JWT in localStorage («مرا در این دستگاه به خاطر بسپار») or sessionStorage. Fine for a demo; production should use an httpOnly cookie.
 
 ## Design handoff: what differs
 
@@ -118,9 +123,11 @@ Design elements with no backend were left out rather than faked:
 SMS (order confirmation, technician introduction, invoice), photo upload and barcode scan at finish, changing the battery on site,
 «وقتی موجود شد خبرم کن», CSV export («خروجی») and row checkboxes, «گزارش مشکل یا عدم امکان نصب», «تحویل به انبار» tracking,
 ETA («رسیدن تقریبی»), editing address/time from the order detail, «فراموشی رمز», the «سؤالات متداول» link, and the «بیشتر» menu.
+There is no warehouse-keeper («انباردار») role: receipts and transfers are for branch managers and the super admin.
 Sentences that promise SMS were removed from the success, assignment and confirmation screens.
 
 Wording added where the design had no text for a state the app needs: logout («خروج»), cancel dialog («دلیل لغو»),
 empty states (no missions today, no technicians found, no free slot that day, nothing needs attention), date presets on the
-orders table, «تحویل نشد» for a not-returned old battery, and select placeholders («انتخاب کنید»).
+orders table, «تحویل نشد» for a not-returned old battery, select placeholders («انتخاب کنید»), and the receipt / transfer
+dialogs («محصول»، «تعداد»، «انبار مقصد»، «ثبت انتقال»), which the design references but does not draw.
 The admin login keeps the design label «نام کاربری یا شماره موبایل», but only mobile numbers are accepted.
