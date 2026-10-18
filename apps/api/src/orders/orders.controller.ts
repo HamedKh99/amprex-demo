@@ -12,11 +12,11 @@ import {
   Res,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiTags } from '@nestjs/swagger';
-import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import type { AuthUser } from '../auth/auth.types.js';
 import { CurrentUser, Public, Roles } from '../auth/decorators.js';
 import { AppException } from '../common/app-exception.js';
+import { RateLimit } from '../common/rate-limit.js';
 import { BUSINESS_RULES } from '../config/business-rules.js';
 import {
   AssignDto,
@@ -38,7 +38,7 @@ export class OrdersController {
    * the existing order with 200 instead of 201.
    */
   @Public()
-  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @RateLimit(20)
   @ApiHeader({ name: 'Idempotency-Key', required: true, description: 'Unique per checkout attempt (UUID).' })
   @Post()
   async create(
@@ -62,7 +62,7 @@ export class OrdersController {
 
   /** Public status page. POST so the customer's phone never lands in URLs or access logs. */
   @Public()
-  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @RateLimit(20)
   @Post('track')
   @HttpCode(200)
   track(@Body() q: TrackOrderDto) {

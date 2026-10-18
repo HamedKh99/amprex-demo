@@ -13,7 +13,7 @@ import { HttpExceptionFilter } from './common/http-exception.filter.js';
 export function configureApp(app: INestApplication) {
   // Every request reaches us through a proxy (the web app's /api rewrite, Vercel's edge), so the
   // socket address is the proxy's. Trusting X-Forwarded-For makes req.ip the real client, which is
-  // what ThrottlerGuard keys on; otherwise all users would share one rate-limit bucket.
+  // what RateLimitGuard keys on; otherwise all users would share one rate-limit bucket.
   (app.getHttpAdapter().getInstance() as { set(key: string, value: unknown): void }).set('trust proxy', true);
   // Short id per request, shown in UI error states («شناسه خطا») and handy in logs.
   app.use((_req: Request, res: Response, next: NextFunction) => {
