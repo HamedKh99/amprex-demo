@@ -23,6 +23,9 @@ Deployment (Vercel Services, see vercel.json). Each of these caused a production
 - The api service builds with `pnpm run vercel-build` (no nest build, no dist/): a dist/ is adopted as a
   prebuilt app and breaks module loading. Never set outputDirectory on api.
 - Keep `node-linker=hoisted` in .npmrc: Vercel's dependency trace drops pnpm symlinks.
+- apps/api/src/main.ts default-exports a (req, res) handler for Vercel and only calls app.listen()
+  when run directly. Never await app.listen() at module top level: Vercel's launcher stubs
+  http.Server#listen without calling back, so the import never finishes and every request hangs.
 
 Non-negotiables:
 
