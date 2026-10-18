@@ -5,7 +5,7 @@
     "api": {
       "root": "apps/api",
       "framework": "nestjs",
-      "outputDirectory": "dist",
+      "buildCommand": "pnpm run vercel-build",
       "devCommand": "pnpm run dev"
     },
     "web": {

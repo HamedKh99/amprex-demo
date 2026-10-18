@@ -9,6 +9,7 @@
   "scripts": {
     "prebuild": "pnpm --filter @amprex/shared build && pnpm swagger:metadata",
     "build": "nest build",
+    "vercel-build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && pnpm run prebuild",
     "dev": "nest start --watch",
     "start": "node dist/main.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
